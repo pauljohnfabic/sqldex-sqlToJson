@@ -1,0 +1,1458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sqldex-sqlToJson</title>
+<meta name="description" content="SQLDEX: turn SQL Server results into JSON, right in your browser.">
+<meta name="theme-color" content="#df6459">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' shape-rendering='crispEdges'><path fill='%232b2737' d='M3 0h4v1h-4zM1 1h2v1h-2zM7 1h2v1h-2zM1 2h1v1h-1zM8 2h1v1h-1zM0 3h1v1h-1zM4 3h2v1h-2zM9 3h1v1h-1zM0 4h4v1h-4zM6 4h4v1h-4zM0 5h4v1h-4zM6 5h4v1h-4zM0 6h1v1h-1zM4 6h2v1h-2zM9 6h1v1h-1zM1 7h1v1h-1zM8 7h1v1h-1zM1 8h2v1h-2zM7 8h2v1h-2zM3 9h4v1h-4z'/><path fill='%23e0605a' d='M3 1h4v1h-4zM2 2h1v1h-1zM4 2h4v1h-4zM1 3h3v1h-3zM6 3h3v1h-3z'/><path fill='%23fffaf0' d='M3 2h1v1h-1zM4 4h2v1h-2zM4 5h2v1h-2zM1 6h3v1h-3zM6 6h3v1h-3zM2 7h6v1h-6zM3 8h4v1h-4z'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<style>
+  :root {
+    --page: #f6efe2;
+    --page-dot: #ebe1cd;
+    --ink: #2b2737;
+    --on-color: #2b2737;
+    --red: #df6459;
+    --red-hi: #ec8a7f;
+    --red-lo: #b84b42;
+    --panel: #fffaf0;
+    --field: #ffffff;
+    --hover: #fff1d6;
+    --text: #2b2737;
+    --muted: #625c6c;
+    --bezel: #ebe4d6;
+    --screen: #e4efd5;
+    --screen-text: #253520;
+    --screen-muted: #6f8268;
+    --screen-select: #bddca3;
+    --lens-ring: #fffaf0;
+    --lens: #4a93db;
+    --lens-dark: #2f6fb3;
+    --lens-flash: #a9d6fb;
+    --yellow: #f6cf57;
+    --yellow-hover: #f9da7a;
+    --dialog-ring: #8fc1ec;
+    --focus: #3d7fd1;
+    --pad: #4a4657;
+    --pad-dot: #393645;
+    --bevel-lo: rgba(43, 39, 55, 0.2);
+    --bevel-hi: rgba(255, 255, 255, 0.55);
+    --shadow: rgba(43, 39, 55, 0.16);
+    --warn-bg: #fff0c2;
+    --warn-text: #664700;
+    --error-bg: #ffe0db;
+    --error-text: #962a24;
+    /* Pokémon-type palette, softened */
+    --t-water: #8fc1ec;
+    --t-grass: #9fd47e;
+    --t-electric: #f6d55c;
+    --t-fire: #f5a466;
+    --t-normal: #cdc7ad;
+    --t-psychic: #f4a0c2;
+    --led-red: #ff6f61;
+    --led-yellow: #ffd54a;
+    --led-green: #7fdc6e;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #1a1823;
+      --page-dot: #24212f;
+      --ink: #100e16;
+      --on-color: #1a1722;
+      --red: #a9473f;
+      --red-hi: #c2625a;
+      --red-lo: #7f332d;
+      --panel: #2a2735;
+      --field: #211e2b;
+      --hover: #353142;
+      --text: #efe8db;
+      --muted: #aaa3b6;
+      --bezel: #37333f;
+      --screen: #1d2a20;
+      --screen-text: #c3e4ad;
+      --screen-muted: #7f9b73;
+      --screen-select: #3b5c34;
+      --lens-ring: #e9e2d4;
+      --lens: #3f84c9;
+      --lens-dark: #2a5f99;
+      --lens-flash: #8cc4f2;
+      --yellow: #e3bb48;
+      --yellow-hover: #ecc964;
+      --dialog-ring: #5f8fbd;
+      --focus: #84b6e8;
+      --pad: #2e2b37;
+      --pad-dot: #23202b;
+      --bevel-lo: rgba(0, 0, 0, 0.3);
+      --bevel-hi: rgba(255, 255, 255, 0.08);
+      --shadow: rgba(0, 0, 0, 0.35);
+      --warn-bg: #3a3120;
+      --warn-text: #f0d27e;
+      --error-bg: #42201f;
+      --error-text: #ffaba3;
+      --t-water: #6fa3d4;
+      --t-grass: #7fb862;
+      --t-electric: #dcbc45;
+      --t-fire: #dd8a4e;
+      --t-normal: #aca78f;
+      --t-psychic: #d983a8;
+      color-scheme: dark;
+    }
+  }
+
+  :root {
+    /* Pixel borders: four offset copies leave the corners notched. */
+    --edge: 0 -4px 0 0 var(--ink), 0 4px 0 0 var(--ink), -4px 0 0 0 var(--ink), 4px 0 0 0 var(--ink);
+    --edge-sm: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink);
+    --edge-focus: 0 -4px 0 0 var(--focus), 0 4px 0 0 var(--focus), -4px 0 0 0 var(--focus), 4px 0 0 0 var(--focus);
+    /* Stepped "rounded" corners for the device shell; the inner one sits 4px inside the outer. */
+    --corner-outer: polygon(0 12px, 4px 12px, 4px 4px, 12px 4px, 12px 0, calc(100% - 12px) 0, calc(100% - 12px) 4px, calc(100% - 4px) 4px, calc(100% - 4px) 12px, 100% 12px, 100% calc(100% - 12px), calc(100% - 4px) calc(100% - 12px), calc(100% - 4px) calc(100% - 4px), calc(100% - 12px) calc(100% - 4px), calc(100% - 12px) 100%, 12px 100%, 12px calc(100% - 4px), 4px calc(100% - 4px), 4px calc(100% - 12px), 0 calc(100% - 12px));
+    --corner-inner: polygon(0 8px, 4px 8px, 4px 4px, 8px 4px, 8px 0, calc(100% - 8px) 0, calc(100% - 8px) 4px, calc(100% - 4px) 4px, calc(100% - 4px) 8px, 100% 8px, 100% calc(100% - 8px), calc(100% - 4px) calc(100% - 8px), calc(100% - 4px) calc(100% - 4px), calc(100% - 8px) calc(100% - 4px), calc(100% - 8px) 100%, 8px 100%, 8px calc(100% - 4px), 4px calc(100% - 4px), 4px calc(100% - 8px), 0 calc(100% - 8px));
+    --pixel-font: "Press Start 2P", "Courier New", monospace;
+    --text-font: "VT323", ui-monospace, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background-color: var(--page);
+    background-image: conic-gradient(at 4px 4px, transparent 75%, var(--page-dot) 0);
+    background-size: 24px 24px;
+    color: var(--text);
+    font: 20px/1.25 var(--text-font);
+  }
+  svg { display: block; }
+  .page { max-width: 1440px; margin: 0 auto; padding: 16px 16px 24px; }
+
+  /* ---- device shell ---- */
+  .dex-wrap { position: relative; }
+  .dex-wrap::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translate(8px, 8px);
+    background: var(--shadow);
+    clip-path: var(--corner-outer);
+  }
+  .dex { position: relative; background: var(--ink); padding: 4px; clip-path: var(--corner-outer); }
+  .dex-body {
+    background: var(--red);
+    clip-path: var(--corner-inner);
+    padding: 0 20px 20px;
+    min-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ---- lid: lens, LEDs, logo, direction switch ---- */
+  .lid {
+    --lid-x: 144px;
+    position: relative;
+    margin: 0 -20px;
+    padding: 12px 20px 28px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 14px;
+  }
+  .lid > :not(.lid-bg) { position: relative; }
+  .lid-bg { position: absolute; inset: 0; filter: drop-shadow(0 4px 0 var(--ink)); }
+  .lid-bg > div {
+    height: 100%;
+    background: linear-gradient(var(--red-hi) 0 4px, var(--red) 4px);
+    /* Pixel staircase: the lid hangs lower on the left, like the classic dex. */
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px),
+      calc(var(--lid-x) + 32px) calc(100% - 16px), calc(var(--lid-x) + 32px) calc(100% - 12px),
+      calc(var(--lid-x) + 24px) calc(100% - 12px), calc(var(--lid-x) + 24px) calc(100% - 8px),
+      calc(var(--lid-x) + 16px) calc(100% - 8px), calc(var(--lid-x) + 16px) calc(100% - 4px),
+      calc(var(--lid-x) + 8px) calc(100% - 4px), calc(var(--lid-x) + 8px) 100%, 0 100%);
+  }
+  .lens { align-self: flex-start; }
+  .lens svg { width: 48px; height: 48px; }
+  .lens .ink, .led .ink, .dpad .ink { fill: var(--ink); }
+  .lens .ring { fill: var(--lens-ring); }
+  .lens .core { fill: var(--lens); }
+  .lens .core-dark { fill: var(--lens-dark); }
+  .lens .shine { fill: #fff; }
+  .dex.flash .lens .core { fill: var(--lens-flash); }
+
+  .leds { display: flex; gap: 4px; align-self: flex-start; }
+  .led svg { width: 16px; height: 16px; }
+  .led-red { --c: var(--led-red); }
+  .led-yellow { --c: var(--led-yellow); }
+  .led-green { --c: var(--led-green); }
+  .led .fill { fill: color-mix(in srgb, var(--c) 40%, #2b2737); }
+  .led .shine { fill: #fff; opacity: 0; }
+  .dex[data-state="error"] .led-red .fill,
+  .dex[data-state="warn"] .led-yellow .fill,
+  .dex[data-state="ok"] .led-green .fill { fill: var(--c); }
+  .dex[data-state="error"] .led-red .shine,
+  .dex[data-state="warn"] .led-yellow .shine,
+  .dex[data-state="ok"] .led-green .shine { opacity: 0.9; }
+
+  .logo { margin: 0; display: flex; align-items: center; gap: 14px; font-weight: normal; }
+  .logo-main {
+    font: 22px/1 var(--pixel-font);
+    letter-spacing: 2px;
+    color: #ffd75e;
+    text-shadow:
+      2px 0 0 #3466af, -2px 0 0 #3466af, 0 2px 0 #3466af, 0 -2px 0 #3466af,
+      2px 2px 0 #3466af, -2px 2px 0 #3466af, 2px -2px 0 #3466af, -2px -2px 0 #3466af,
+      4px 4px 0 var(--ink);
+  }
+  .logo-sub {
+    font: 9px/1 var(--pixel-font);
+    color: #fff6e6;
+    background: var(--ink);
+    padding: 5px 7px;
+    box-shadow: var(--edge-sm);
+  }
+
+  /* ---- direction switch: a game-menu style pair with a ▶ cursor ---- */
+  .modes { display: flex; gap: 14px; margin-left: auto; padding: 0 4px; }
+  .mode { font-size: 10px; padding: 10px 14px 11px 10px; display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; }
+  .mode svg { width: 14px; height: 10px; fill: currentColor; }
+  .mode::before {
+    content: "";
+    width: 8px;
+    height: 14px;
+    background: currentColor;
+    clip-path: polygon(0 0, 25% 0, 25% 14.3%, 50% 14.3%, 50% 28.6%, 75% 28.6%, 75% 42.9%, 100% 42.9%, 100% 57.1%, 75% 57.1%, 75% 71.4%, 50% 71.4%, 50% 85.7%, 25% 85.7%, 25% 100%, 0 100%);
+    visibility: hidden;
+  }
+  .mode[aria-pressed="true"] { background: var(--yellow); color: var(--on-color); }
+  .mode[aria-pressed="true"]:hover:not(:disabled) { background: var(--yellow-hover); }
+  .mode[aria-pressed="true"]::before { visibility: visible; }
+
+  /* ---- dialog box ---- */
+  .dialog {
+    position: relative;
+    background: var(--panel);
+    color: var(--text);
+    padding: 10px 40px 10px 16px;
+    box-shadow: var(--edge), inset 0 0 0 3px var(--panel), inset 0 0 0 5px var(--dialog-ring);
+  }
+  .dialog p { margin: 0; font-size: 19px; line-height: 1.3; }
+  .dialog::after {
+    content: "";
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    width: 14px;
+    height: 8px;
+    background: var(--red);
+    clip-path: polygon(0 0, 100% 0, 100% 25%, 85.7% 25%, 85.7% 50%, 71.4% 50%, 71.4% 75%, 57.1% 75%, 57.1% 100%, 42.9% 100%, 42.9% 75%, 28.6% 75%, 28.6% 50%, 14.3% 50%, 14.3% 25%, 0 25%);
+    animation: bob 1.2s steps(1, end) infinite;
+  }
+  @keyframes bob { 50% { transform: translateY(3px); } }
+  kbd {
+    font: 9px/1 var(--pixel-font);
+    padding: 4px 6px 6px;
+    margin: 0 3px;
+    vertical-align: 3px;
+    background: var(--bezel);
+    color: var(--text);
+    box-shadow: var(--edge-sm), inset 0 -3px 0 0 var(--bevel-lo);
+  }
+
+  /* ---- options panel ---- */
+  .options {
+    position: relative;
+    margin-top: 10px;
+    background: var(--panel);
+    box-shadow: var(--edge);
+    padding: 24px 16px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px 20px;
+  }
+  .panel-tab {
+    position: absolute;
+    top: -14px;
+    left: 16px;
+    margin: 0;
+    font: 10px/1 var(--pixel-font);
+    text-transform: uppercase;
+    color: var(--on-color);
+    background: var(--yellow);
+    padding: 7px 10px;
+    box-shadow: var(--edge-sm);
+  }
+  .opt-group { display: contents; }
+  .field { display: flex; flex-direction: column; gap: 8px; }
+  .field label {
+    font: 9px/1.2 var(--pixel-font);
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .select { position: relative; display: block; margin: 0 4px 4px; }
+  .select::after {
+    content: "";
+    position: absolute;
+    right: 11px;
+    top: 50%;
+    margin-top: -3px;
+    width: 10px;
+    height: 6px;
+    background: var(--text);
+    clip-path: polygon(0 0, 100% 0, 100% 33.3%, 80% 33.3%, 80% 66.7%, 60% 66.7%, 60% 100%, 40% 100%, 40% 66.7%, 20% 66.7%, 20% 33.3%, 0 33.3%);
+    pointer-events: none;
+  }
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-width: 180px;
+    font: 20px/1 var(--text-font);
+    color: var(--text);
+    background: var(--field);
+    border: 0;
+    border-radius: 0;
+    padding: 6px 32px 7px 10px;
+    box-shadow: var(--edge), inset 0 -3px 0 0 var(--bevel-lo);
+    cursor: pointer;
+  }
+  select:hover { background: var(--hover); }
+  select option { background: var(--field); color: var(--text); }
+  .text-input {
+    display: block;
+    width: 220px;
+    margin: 0 4px 4px;
+    font: 20px/1 var(--text-font);
+    color: var(--text);
+    background: var(--field);
+    border: 0;
+    border-radius: 0;
+    padding: 6px 10px 7px;
+    box-shadow: var(--edge), inset 0 3px 0 0 var(--bevel-lo);
+  }
+  .text-input::placeholder { color: var(--muted); opacity: 1; }
+
+  .checks { display: flex; flex-wrap: wrap; gap: 10px 22px; padding-bottom: 6px; }
+  .checks label { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+  /* Checkboxes are pixel Poké Balls: grey when off, full colour when caught. */
+  input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    cursor: pointer;
+    background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' shape-rendering='crispEdges'><path fill='%232b2737' d='M3 0h4v1h-4zM1 1h2v1h-2zM7 1h2v1h-2zM1 2h1v1h-1zM8 2h1v1h-1zM0 3h1v1h-1zM4 3h2v1h-2zM9 3h1v1h-1zM0 4h4v1h-4zM6 4h4v1h-4zM0 5h4v1h-4zM6 5h4v1h-4zM0 6h1v1h-1zM4 6h2v1h-2zM9 6h1v1h-1zM1 7h1v1h-1zM8 7h1v1h-1zM1 8h2v1h-2zM7 8h2v1h-2zM3 9h4v1h-4z'/><path fill='%23e0605a' d='M3 1h4v1h-4zM2 2h1v1h-1zM4 2h4v1h-4zM1 3h3v1h-3zM6 3h3v1h-3z'/><path fill='%23fffaf0' d='M3 2h1v1h-1zM4 4h2v1h-2zM4 5h2v1h-2zM1 6h3v1h-3zM6 6h3v1h-3zM2 7h6v1h-6zM3 8h4v1h-4z'/></svg>") center / 100% 100% no-repeat;
+    image-rendering: pixelated;
+    filter: grayscale(1);
+    opacity: 0.45;
+  }
+  input[type="checkbox"]:hover { opacity: 0.7; }
+  input[type="checkbox"]:checked { filter: none; opacity: 1; }
+
+  /* ---- buttons ---- */
+  button {
+    font: 10px/1 var(--pixel-font);
+    text-transform: uppercase;
+    color: var(--text);
+    background: var(--field);
+    border: 0;
+    border-radius: 0;
+    padding: 9px 12px 11px;
+    cursor: pointer;
+    box-shadow: var(--edge), inset -3px -3px 0 0 var(--bevel-lo);
+  }
+  button:hover:not(:disabled) { background: var(--hover); }
+  button:active:not(:disabled) { transform: translateY(2px); box-shadow: var(--edge), inset 3px 3px 0 0 var(--bevel-lo); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.primary { background: var(--yellow); color: var(--on-color); }
+  button.primary:hover:not(:disabled) { background: var(--yellow-hover); }
+  #copyBtn { min-width: 96px; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 6px; }
+  input[type="checkbox"]:focus-visible { outline-offset: 3px; }
+
+  /* ---- screens ---- */
+  .panes {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    min-height: 480px;
+  }
+  .pane {
+    background: var(--bezel);
+    box-shadow: var(--edge), inset 0 4px 0 0 var(--bevel-hi), inset 0 -4px 0 0 var(--bevel-lo);
+    padding: 14px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .pane-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 4px 16px;
+  }
+  .pane-head h2 {
+    margin: 0;
+    font: 11px/1.4 var(--pixel-font);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .badge {
+    font: 9px/1 var(--pixel-font);
+    color: var(--on-color);
+    padding: 5px 7px;
+    box-shadow: var(--edge-sm);
+  }
+  .badge-in { background: var(--t-water); }
+  .badge-out { background: var(--t-grass); }
+  .actions { display: flex; gap: 14px; padding-right: 4px; }
+
+  .screen {
+    position: relative;
+    flex: 1;
+    display: flex;
+    margin: 0 4px;
+    background: var(--screen);
+    box-shadow: var(--edge), inset 4px 4px 0 0 rgba(0, 0, 0, 0.06);
+  }
+  .pane:focus-within .screen, .pane.dropping .screen { box-shadow: var(--edge-focus); }
+  .pane.dropping .screen::after {
+    content: "Drop it to catch it!";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    text-align: center;
+    font: 11px/1.6 var(--pixel-font);
+    text-transform: uppercase;
+    color: var(--screen-text);
+    background: color-mix(in srgb, var(--screen) 85%, transparent);
+    pointer-events: none;
+  }
+  textarea {
+    flex: 1;
+    width: 100%;
+    min-height: 300px;
+    resize: none;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    padding: 12px 14px;
+    background: transparent;
+    color: var(--screen-text);
+    font: 20px/1.3 var(--text-font);
+    white-space: pre;
+    overflow: auto;
+    tab-size: 4;
+    scrollbar-color: var(--screen-muted) transparent;
+  }
+  textarea::placeholder { color: var(--screen-muted); opacity: 1; }
+  textarea::selection { background: var(--screen-select); color: var(--screen-text); }
+
+  .pane-foot {
+    padding: 16px 4px 0;
+    color: var(--muted);
+    font-size: 19px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .status { min-height: 24px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px 12px; max-height: 112px; overflow: auto; padding: 2px; }
+  .chips:empty { display: none; }
+  .chip {
+    display: inline-flex;
+    align-items: stretch;
+    padding-left: 7px;
+    background: var(--field);
+    color: var(--text);
+    font-size: 18px;
+    line-height: 24px;
+    white-space: nowrap;
+    box-shadow: var(--edge-sm);
+  }
+  .chip.more { padding-right: 7px; color: var(--muted); }
+  .chip i {
+    font-style: normal;
+    font-size: 16px;
+    text-transform: uppercase;
+    margin-left: 7px;
+    padding: 0 6px;
+    color: var(--on-color);
+    background: var(--t-normal);
+    border-left: 2px solid var(--ink);
+  }
+  .chip .t-string { background: var(--t-grass); }
+  .chip .t-number { background: var(--t-electric); }
+  .chip .t-boolean { background: var(--t-fire); }
+  .chip .t-mixed, .chip .t-json { background: var(--t-psychic); }
+  .chip .t-date { background: var(--t-water); }
+
+  .msgs { display: flex; flex-direction: column; gap: 10px; padding: 2px; }
+  .msgs:empty { display: none; }
+  .warn, .error {
+    position: relative;
+    padding: 6px 10px 6px 36px;
+    line-height: 1.25;
+    box-shadow: var(--edge-sm);
+  }
+  .warn { background: var(--warn-bg); color: var(--warn-text); }
+  .error { background: var(--error-bg); color: var(--error-text); }
+  .warn::before, .error::before {
+    content: "!";
+    position: absolute;
+    left: 9px;
+    top: 7px;
+    width: 18px;
+    height: 18px;
+    font: 10px/18px var(--pixel-font);
+    text-align: center;
+    color: var(--on-color);
+    background: var(--yellow);
+  }
+  .error::before { background: var(--led-red); }
+
+  /* ---- bottom of the device ---- */
+  .dex-foot { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .dpad svg { width: 52px; height: 52px; }
+  .dpad .pad { fill: var(--pad); }
+  .dpad .pad-dot { fill: var(--pad-dot); }
+  .plate {
+    margin: 0 auto;
+    padding: 6px 14px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 19px;
+    text-align: center;
+    box-shadow: var(--edge);
+  }
+  .vents { display: flex; flex-direction: column; gap: 6px; }
+  .vents span { display: block; width: 52px; height: 4px; background: var(--red-lo); box-shadow: 0 2px 0 0 var(--red-hi); }
+
+  @media (max-width: 900px) {
+    .panes { grid-template-columns: minmax(0, 1fr); }
+    textarea { min-height: 240px; }
+  }
+  @media (max-width: 860px) {
+    /* Not enough room beside the logo: the switch takes its own row inside the lid. */
+    .modes { flex-basis: 100%; margin-left: 0; }
+    .mode { flex: 1; justify-content: center; }
+  }
+  @media (max-width: 760px) {
+    .dpad, .vents { display: none; }
+  }
+  @media (max-width: 600px) {
+    .page { padding: 12px 12px 20px; }
+    .dex-body { padding: 0 14px 16px; min-height: calc(100vh - 40px); }
+    .lid { --lid-x: 136px; margin: 0 -14px; padding: 12px 14px 28px; }
+    .logo { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .logo-main { font-size: 18px; }
+    .logo-sub { font-size: 8px; }
+    .mode { font-size: 9px; padding: 10px 8px 11px 6px; gap: 6px; }
+    .options { padding: 24px 14px 14px; }
+    .field, .select { width: calc(100% - 8px); }
+    .field .select, .text-input { width: auto; }
+    select { min-width: 0; }
+    .pane { padding: 12px 12px 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dialog::after { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+<div class="dex-wrap">
+<div class="dex" id="dex" data-state="idle">
+<div class="dex-body">
+  <header class="lid">
+    <div class="lid-bg" aria-hidden="true"><div></div></div>
+    <div class="lens" aria-hidden="true">
+      <svg viewBox="0 0 16 16" shape-rendering="crispEdges"><path class="ink" d="M5 0h6v1h-6zM3 1h2v1h-2zM11 1h2v1h-2zM2 2h1v1h-1zM13 2h1v1h-1zM1 3h1v1h-1zM5 3h6v1h-6zM14 3h1v1h-1zM1 4h1v1h-1zM4 4h1v1h-1zM11 4h1v1h-1zM14 4h1v1h-1zM0 5h1v1h-1zM3 5h1v1h-1zM12 5h1v1h-1zM15 5h1v1h-1zM0 6h1v1h-1zM3 6h1v1h-1zM12 6h1v1h-1zM15 6h1v1h-1zM0 7h1v1h-1zM3 7h1v1h-1zM12 7h1v1h-1zM15 7h1v1h-1zM0 8h1v1h-1zM3 8h1v1h-1zM12 8h1v1h-1zM15 8h1v1h-1zM0 9h1v1h-1zM3 9h1v1h-1zM12 9h1v1h-1zM15 9h1v1h-1zM0 10h1v1h-1zM3 10h1v1h-1zM12 10h1v1h-1zM15 10h1v1h-1zM1 11h1v1h-1zM4 11h1v1h-1zM11 11h1v1h-1zM14 11h1v1h-1zM1 12h1v1h-1zM5 12h6v1h-6zM14 12h1v1h-1zM2 13h1v1h-1zM13 13h1v1h-1zM3 14h2v1h-2zM11 14h2v1h-2zM5 15h6v1h-6z"/><path class="ring" d="M5 1h6v1h-6zM3 2h10v1h-10zM2 3h3v1h-3zM11 3h3v1h-3zM2 4h2v1h-2zM12 4h2v1h-2zM1 5h2v1h-2zM13 5h2v1h-2zM1 6h2v1h-2zM13 6h2v1h-2zM1 7h2v1h-2zM13 7h2v1h-2zM1 8h2v1h-2zM13 8h2v1h-2zM1 9h2v1h-2zM13 9h2v1h-2zM1 10h2v1h-2zM13 10h2v1h-2zM2 11h2v1h-2zM12 11h2v1h-2zM2 12h3v1h-3zM11 12h3v1h-3zM3 13h10v1h-10zM5 14h6v1h-6z"/><path class="core" d="M5 4h6v1h-6zM4 5h1v1h-1zM7 5h5v1h-5zM4 6h1v1h-1zM6 6h6v1h-6zM4 7h8v1h-8zM4 8h8v1h-8zM4 9h7v1h-7zM4 10h6v1h-6zM5 11h1v1h-1z"/><path class="shine" d="M5 5h2v1h-2zM5 6h1v1h-1z"/><path class="core-dark" d="M11 9h1v1h-1zM10 10h2v1h-2zM6 11h5v1h-5z"/></svg>
+    </div>
+    <div class="leds" aria-hidden="true">
+      <span class="led led-red"><svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path class="ink" d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v1h-1zM7 2h1v1h-1zM0 3h1v1h-1zM7 3h1v1h-1zM0 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM7 5h1v1h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z"/><path class="fill" d="M2 1h4v1h-4zM1 2h1v1h-1zM3 2h4v1h-4zM1 3h6v1h-6zM1 4h6v1h-6zM1 5h6v1h-6zM2 6h4v1h-4z"/><path class="shine" d="M2 2h1v1h-1z"/></svg></span>
+      <span class="led led-yellow"><svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path class="ink" d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v1h-1zM7 2h1v1h-1zM0 3h1v1h-1zM7 3h1v1h-1zM0 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM7 5h1v1h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z"/><path class="fill" d="M2 1h4v1h-4zM1 2h1v1h-1zM3 2h4v1h-4zM1 3h6v1h-6zM1 4h6v1h-6zM1 5h6v1h-6zM2 6h4v1h-4z"/><path class="shine" d="M2 2h1v1h-1z"/></svg></span>
+      <span class="led led-green"><svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path class="ink" d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v1h-1zM7 2h1v1h-1zM0 3h1v1h-1zM7 3h1v1h-1zM0 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM7 5h1v1h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z"/><path class="fill" d="M2 1h4v1h-4zM1 2h1v1h-1zM3 2h4v1h-4zM1 3h6v1h-6zM1 4h6v1h-6zM1 5h6v1h-6zM2 6h4v1h-4z"/><path class="shine" d="M2 2h1v1h-1z"/></svg></span>
+    </div>
+    <h1 class="logo"><span class="logo-main">SQLDEX</span><span class="logo-sub">sqlToJson</span></h1>
+    <div class="modes" role="group" aria-label="Conversion direction">
+      <button type="button" class="mode" data-set-mode="toJson" aria-pressed="true">SQL<svg viewBox="0 0 7 5" shape-rendering="crispEdges" role="img" aria-label="to"><path d="M4 0h1v1h-1zM4 1h2v1h-2zM0 2h7v1h-7zM4 3h2v1h-2zM4 4h1v1h-1z"/></svg>JSON</button>
+      <button type="button" class="mode" data-set-mode="toSql" aria-pressed="false">JSON<svg viewBox="0 0 7 5" shape-rendering="crispEdges" role="img" aria-label="to"><path d="M4 0h1v1h-1zM4 1h2v1h-2zM0 2h7v1h-7zM4 3h2v1h-2zM4 4h1v1h-1z"/></svg>SQL</button>
+    </div>
+  </header>
+
+  <div class="dialog">
+    <p data-for="toJson">
+      In SSMS, select your results → right-click → <b>Copy with Headers</b>
+      (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) and paste below. CSV, Excel and “Results to Text” work too.
+    </p>
+    <p data-for="toSql" hidden>
+      Paste a JSON array of objects, or JSON Lines (one object per line). Each key becomes a column;
+      nested objects and arrays are saved as JSON text.
+    </p>
+  </div>
+
+  <section class="options" aria-label="Conversion options">
+    <h2 class="panel-tab">Options</h2>
+    <div class="opt-group" data-for="toJson">
+    <div class="field">
+      <label for="format">Input format</label>
+      <span class="select"><select id="format">
+        <option value="auto">Auto-detect</option>
+        <option value="tab">Tab (SSMS grid / Excel)</option>
+        <option value="fixed">Results to Text</option>
+        <option value="comma">Comma (CSV)</option>
+        <option value="semicolon">Semicolon</option>
+        <option value="pipe">Pipe |</option>
+      </select></span>
+    </div>
+    <div class="field">
+      <label for="shape">Output shape</label>
+      <span class="select"><select id="shape">
+        <option value="objects">Array of objects</option>
+        <option value="keyed">Object keyed by 1st column</option>
+        <option value="columns">Columns + rows</option>
+        <option value="ndjson">JSON Lines (NDJSON)</option>
+      </select></span>
+    </div>
+    <div class="field">
+      <label for="keys">Property names</label>
+      <span class="select"><select id="keys">
+        <option value="keep">Same as SQL columns</option>
+        <option value="camel">camelCase</option>
+        <option value="snake">snake_case</option>
+        <option value="lower">lowercase</option>
+      </select></span>
+    </div>
+    <div class="field">
+      <label for="indent">Indent</label>
+      <span class="select"><select id="indent">
+        <option value="2">2 spaces</option>
+        <option value="4">4 spaces</option>
+        <option value="tab">Tab</option>
+        <option value="0">Minified</option>
+      </select></span>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="header" checked> First row is column names</label>
+      <label><input type="checkbox" id="nulls" checked> NULL → null</label>
+      <label><input type="checkbox" id="types" checked> Detect numbers &amp; booleans</label>
+      <label><input type="checkbox" id="dates"> Dates → ISO 8601</label>
+      <label><input type="checkbox" id="emptyNull"> Empty cells → null</label>
+      <label><input type="checkbox" id="trim" checked> Trim spaces</label>
+    </div>
+    </div>
+
+    <div class="opt-group" data-for="toSql" hidden>
+    <div class="field">
+      <label for="table">Table name</label>
+      <input type="text" id="table" class="text-input" value="dbo.MyTable" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="stmt">Statement</label>
+      <span class="select"><select id="stmt">
+        <option value="insert">INSERT (1000 rows/batch)</option>
+        <option value="insertEach">INSERT (one per row)</option>
+        <option value="update">UPDATE by 1st column</option>
+      </select></span>
+    </div>
+    <div class="field">
+      <label for="sqlKeys">Column names</label>
+      <span class="select"><select id="sqlKeys">
+        <option value="keep">Same as JSON keys</option>
+        <option value="pascal">PascalCase</option>
+        <option value="snake">snake_case</option>
+      </select></span>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="create" checked> CREATE TABLE</label>
+      <label><input type="checkbox" id="unicode" checked> Unicode (N'…', NVARCHAR)</label>
+      <label><input type="checkbox" id="tx"> Wrap in transaction</label>
+      <label><input type="checkbox" id="identity"> IDENTITY_INSERT ON</label>
+    </div>
+    </div>
+  </section>
+
+  <main class="panes">
+    <section class="pane" id="inputPane">
+      <div class="pane-head">
+        <h2><span class="badge badge-in" aria-hidden="true">IN</span><span id="inTitle">Paste SQL results</span></h2>
+        <div class="actions">
+          <button type="button" id="sampleBtn">Sample</button>
+          <button type="button" id="clearBtn">Clear</button>
+        </div>
+      </div>
+      <div class="screen">
+        <textarea id="input" spellcheck="false" autocomplete="off" aria-label="SQL results input"
+          placeholder="CustomerID&#9;Name&#9;Email&#10;1&#9;Juan&#9;juan@example.com&#10;2&#9;Maria&#9;NULL&#10;&#10;Paste here, or drop a .csv / .tsv / .txt file."></textarea>
+      </div>
+      <div class="pane-foot">
+        <div class="status" id="inStatus">Waiting for input…</div>
+        <div class="chips" id="chips"></div>
+      </div>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head">
+        <h2><span class="badge badge-out" aria-hidden="true">OUT</span><span id="outTitle">JSON</span></h2>
+        <div class="actions">
+          <button type="button" id="downloadBtn" disabled>Download</button>
+          <button type="button" id="copyBtn" class="primary" disabled>Copy</button>
+        </div>
+      </div>
+      <div class="screen">
+        <textarea id="output" readonly spellcheck="false" aria-label="JSON output" placeholder="Your JSON will appear here…"></textarea>
+      </div>
+      <div class="pane-foot">
+        <div class="status" id="outStatus"></div>
+        <div class="msgs" id="msgs"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="dex-foot">
+    <div class="dpad" aria-hidden="true">
+      <svg viewBox="0 0 13 13" shape-rendering="crispEdges"><path class="ink" d="M4 0h5v1h-5zM4 1h1v1h-1zM8 1h1v1h-1zM4 2h1v1h-1zM8 2h1v1h-1zM4 3h1v1h-1zM8 3h1v1h-1zM0 4h5v1h-5zM8 4h5v1h-5zM0 5h1v1h-1zM12 5h1v1h-1zM0 6h1v1h-1zM12 6h1v1h-1zM0 7h1v1h-1zM12 7h1v1h-1zM0 8h5v1h-5zM8 8h5v1h-5zM4 9h1v1h-1zM8 9h1v1h-1zM4 10h1v1h-1zM8 10h1v1h-1zM4 11h1v1h-1zM8 11h1v1h-1zM4 12h5v1h-5z"/><path class="pad" d="M5 1h3v1h-3zM5 2h3v1h-3zM5 3h3v1h-3zM5 4h3v1h-3zM1 5h11v1h-11zM1 6h5v1h-5zM7 6h5v1h-5zM1 7h11v1h-11zM5 8h3v1h-3zM5 9h3v1h-3zM5 10h3v1h-3zM5 11h3v1h-3z"/><path class="pad-dot" d="M6 6h1v1h-1z"/></svg>
+    </div>
+    <p class="plate">Runs entirely in your browser — your data is never uploaded anywhere.</p>
+    <div class="vents" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+  </footer>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+// ---- core ----
+const FORMAT_NAMES = {
+  tab: 'Tab-separated (SSMS grid)',
+  fixed: 'Fixed-width (SSMS Results to Text)',
+  comma: 'Comma-separated (CSV)',
+  semicolon: 'Semicolon-separated',
+  pipe: 'Pipe-separated',
+};
+const DELIMS = { comma: ',', semicolon: ';', pipe: '|' };
+
+const LINE_RE = /\r\n|\n|\r/;
+const DASH_LINE_RE = /^-+( +-+)*\s*$/;
+const INT_RE = /^-?\d+$/;
+const DEC_RE = /^-?\d+\.\d+$/;
+const EXP_RE = /^-?\d+(\.\d+)?[eE][+-]?\d+$/;
+const LEADING_ZERO_RE = /^-?0\d/;
+const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(?: ?([+-]\d{2}:\d{2}|Z))?$/;
+
+function detectFormat(text) {
+  const head = text.slice(0, 20000).split(LINE_RE);
+  if (head.length > 1 && DASH_LINE_RE.test(head[1])) return 'fixed';
+  if (head[0].includes('\t')) return 'tab';
+  let best = 'tab', max = 0;
+  for (const [name, d] of Object.entries(DELIMS)) {
+    const count = head[0].split(d).length - 1;
+    if (count > max) { max = count; best = name; }
+  }
+  return best;
+}
+
+function parseRows(text, format) {
+  if (format === 'fixed') return parseFixed(text);
+  if (format === 'tab') {
+    // SSMS doesn't quote values when copying, so a plain split is the faithful parse.
+    return text.split(LINE_RE)
+      .filter(line => line.includes('\t') || line.trim() !== '')
+      .map(line => line.split('\t'));
+  }
+  return parseQuoted(text, DELIMS[format]);
+}
+
+// RFC 4180-style parsing: "quoted, values" and "" escapes, newlines inside quotes.
+function parseQuoted(text, d) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c !== '"') field += c;
+      else if (text[i + 1] === '"') { field += '"'; i++; }
+      else inQuotes = false;
+    } else if (c === '"' && field === '') {
+      inQuotes = true;
+    } else if (c === d) {
+      row.push(field); field = '';
+    } else if (c === '\r' || c === '\n') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1 || r[0].trim() !== '');
+}
+
+// SSMS "Results to Text": header line, a line of dashes marking each column's width, then rows.
+function parseFixed(text) {
+  const lines = text.split(LINE_RE);
+  const starts = [];
+  for (const m of lines[1].matchAll(/-+/g)) starts.push(m.index);
+  const cut = line => starts.map((s, k) => line.slice(s, starts[k + 1]).trim());
+  const rows = [cut(lines[0])];
+  for (const line of lines.slice(2)) {
+    const t = line.trim();
+    if (t === '' || /^\(\d+ rows? affected\)$/i.test(t) || /^Completion time:/i.test(t)) continue;
+    rows.push(cut(line));
+  }
+  return rows;
+}
+
+function splitWords(name) {
+  return name
+    .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, '$1 $2')
+    .replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, '$1 $2')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map(w => w.toLowerCase());
+}
+
+function transformKey(name, mode) {
+  switch (mode) {
+    case 'camel': return splitWords(name).map((w, i) => i ? w[0].toUpperCase() + w.slice(1) : w).join('');
+    case 'pascal': return splitWords(name).map(w => w[0].toUpperCase() + w.slice(1)).join('');
+    case 'snake': return splitWords(name).join('_');
+    case 'lower': return name.toLowerCase();
+    default: return name;
+  }
+}
+
+function buildKeys(headerRow, width, mode) {
+  const keys = [], renamed = [], used = new Set();
+  for (let i = 0; i < width; i++) {
+    let name = headerRow ? (headerRow[i] ?? '').trim() : '';
+    if (!name || name === '(No column name)') name = `Column${i + 1}`;
+    name = transformKey(name, mode) || transformKey(`Column${i + 1}`, mode);
+    let key = name;
+    for (let n = 2; used.has(key); n++) key = `${name}_${n}`;
+    if (key !== name) renamed.push([name, key]);
+    used.add(key);
+    keys.push(key);
+  }
+  return { keys, renamed };
+}
+
+function convertValue(raw, o, stats) {
+  const v = o.trim ? raw.trim() : raw;
+  if (o.nulls && v === 'NULL') return null;
+  if (v === '') return o.emptyNull ? null : '';
+  if (o.types) {
+    const isInt = INT_RE.test(v);
+    if (isInt || DEC_RE.test(v) || EXP_RE.test(v)) {
+      // Leading zeros (zip codes, account numbers) stay strings.
+      if (LEADING_ZERO_RE.test(v)) return v;
+      const n = Number(v);
+      const digits = v.replace(/[eE].*$/, '').replace(/[-.]/g, '').replace(/^0+/, '').length;
+      const exact = isInt ? Number.isSafeInteger(n) : digits <= 15 && Number.isFinite(n);
+      if (exact) return n;
+      stats.keptBig++;
+      return v;
+    }
+    const lower = v.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+  }
+  if (o.dates) {
+    const m = DATETIME_RE.exec(v);
+    if (m) return `${m[1]}T${m[2]}${m[3] || ''}`;
+  }
+  return v;
+}
+
+// Hand-rolled serializers keep SQL column order; plain JS objects would hoist
+// integer-like keys (e.g. pivot columns "2023", "2024") to the front.
+function objStr(qk, vals, ind, depth) {
+  if (!qk.length) return '{}';
+  if (!ind) return '{' + qk.map((k, i) => k + ':' + JSON.stringify(vals[i])).join(',') + '}';
+  const pad = ind.repeat(depth + 1);
+  return '{\n' + qk.map((k, i) => pad + k + ': ' + JSON.stringify(vals[i])).join(',\n') + '\n' + ind.repeat(depth) + '}';
+}
+
+function listStr(items, ind, open, close) {
+  if (!items.length) return open + close;
+  if (!ind) return open + items.join(',') + close;
+  return open + '\n' + items.map(s => ind + s).join(',\n') + '\n' + close;
+}
+
+function convertText(text, o) {
+  text = text.replace(/^﻿/, '').replace(/^(?:[ \t]*(?:\r\n|\n|\r))+/, '');
+  const format = o.format === 'auto' ? detectFormat(text) : o.format;
+  const rows = parseRows(text, format);
+  const warnings = [];
+
+  let width = 0;
+  for (const r of rows) if (r.length > width) width = r.length;
+  const headerRow = o.header ? rows[0] : null;
+  const dataRows = o.header ? rows.slice(1) : rows;
+  const { keys, renamed } = buildKeys(headerRow, width, o.keys);
+
+  if (renamed.length) {
+    const list = renamed.slice(0, 5).map(([a, b]) => `${a} → ${b}`).join(', ');
+    warnings.push(`Duplicate column names renamed: ${list}${renamed.length > 5 ? ', …' : ''}`);
+  }
+  if (headerRow && headerRow.length < width) {
+    warnings.push(`Some rows have more cells than the header; extra columns were named Column${headerRow.length + 1}…`);
+  }
+
+  const stats = { keptBig: 0 };
+  let ragged = 0;
+  const records = dataRows.map(r => {
+    if (r.length < width) ragged++;
+    const vals = new Array(width);
+    for (let i = 0; i < width; i++) vals[i] = i < r.length ? convertValue(r[i], o, stats) : null;
+    return vals;
+  });
+  if (ragged) warnings.push(`${ragged} row${ragged > 1 ? 's have' : ' has'} missing cells — filled with null. Check the input format.`);
+  if (stats.keptBig) warnings.push(`${stats.keptBig} number${stats.keptBig > 1 ? 's were' : ' was'} kept as a string to avoid losing precision (too many digits for JavaScript).`);
+
+  const columnTypes = keys.map((_, i) => {
+    const types = new Set();
+    for (const r of records) {
+      if (r[i] !== null) types.add(typeof r[i]);
+      if (types.size > 1) return 'mixed';
+    }
+    return types.size ? [...types][0] : 'null';
+  });
+
+  const ind = o.indent === 'tab' ? '\t' : ' '.repeat(Number(o.indent) || 0);
+  const qk = keys.map(k => JSON.stringify(k));
+  let json;
+  switch (o.shape) {
+    case 'ndjson':
+      json = records.map(r => objStr(qk, r, '', 0)).join('\n');
+      break;
+    case 'keyed': {
+      const map = new Map();
+      let dupes = 0;
+      for (const r of records) {
+        const k = String(r[0]);
+        if (map.has(k)) dupes++;
+        map.set(k, r.slice(1));
+      }
+      if (dupes) warnings.push(`${dupes} duplicate value${dupes > 1 ? 's' : ''} in “${keys[0]}” — later rows overwrote earlier ones.`);
+      const rest = qk.slice(1), sep = ind ? ': ' : ':';
+      json = listStr([...map].map(([k, v]) => JSON.stringify(k) + sep + objStr(rest, v, ind, 1)), ind, '{', '}');
+      break;
+    }
+    case 'columns':
+      json = ind
+        ? '{\n' + ind + '"columns": ' + JSON.stringify(keys) + ',\n' + ind + '"rows": ' +
+          (records.length ? '[\n' + records.map(r => ind + ind + JSON.stringify(r)).join(',\n') + '\n' + ind + ']' : '[]') + '\n}'
+        : JSON.stringify({ columns: keys, rows: records });
+      break;
+    default:
+      json = listStr(records.map(r => objStr(qk, r, ind, 1)), ind, '[', ']');
+  }
+
+  return { format, keys, columnTypes, rowCount: records.length, json, warnings };
+}
+
+// ---- json → sql ----
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PLAIN_NUM_RE = /^-?(\d+)(?:\.(\d+))?$/;
+const INSERT_BATCH = 1000; // SQL Server's limit on rows in one VALUES list
+
+// Keep each number's source text where the browser allows it, so big IDs and
+// DECIMAL scale ("0.50") survive. JSON.rawJSON also re-serialises verbatim in nested JSON.
+const RAW_JSON = typeof JSON.rawJSON === 'function';
+const isRaw = v => RAW_JSON && JSON.isRawJSON(v);
+const keepNumberText = (key, value, ctx) =>
+  RAW_JSON && typeof value === 'number' && ctx && ctx.source ? JSON.rawJSON(ctx.source) : value;
+const isRecord = v => v !== null && typeof v === 'object' && !Array.isArray(v) && !isRaw(v);
+
+function parseJsonInput(text) {
+  try {
+    return { data: JSON.parse(text, keepNumberText), ndjson: false };
+  } catch (err) {
+    const lines = text.split(LINE_RE).filter(l => l.trim());
+    if (lines.length > 1) {
+      try {
+        return { data: lines.map(l => JSON.parse(l, keepNumberText)), ndjson: true };
+      } catch { /* not JSON Lines either — report the original error */ }
+    }
+    throw new Error(`Invalid JSON — ${err.message}`);
+  }
+}
+
+function entriesOf(item) {
+  if (isRecord(item)) return Object.entries(item);
+  if (Array.isArray(item)) return item.map((v, i) => [`Column${i + 1}`, v]);
+  return [['value', item]];
+}
+
+// Every supported input becomes a list of rows, each a list of [key, value] pairs.
+function toEntryRows(data, ndjson) {
+  if (ndjson) return { format: 'JSON Lines', rows: data.map(entriesOf) };
+  if (Array.isArray(data)) return { format: 'JSON array', rows: data.map(entriesOf) };
+  if (isRecord(data)) {
+    // The "Columns + rows" and "Object keyed by 1st column" shapes this tool outputs.
+    if (Array.isArray(data.columns) && Array.isArray(data.rows)) {
+      return {
+        format: 'Columns + rows',
+        rows: data.rows.map(r => Array.isArray(r) ? data.columns.map((c, i) => [String(c), r[i]]) : entriesOf(r)),
+      };
+    }
+    const values = Object.values(data);
+    if (values.length && values.every(isRecord)) {
+      const keyValue = k => INT_RE.test(k) && !LEADING_ZERO_RE.test(k)
+        ? (RAW_JSON ? JSON.rawJSON(k) : Number.isSafeInteger(Number(k)) ? Number(k) : k)
+        : k;
+      return { format: 'Object keyed by id', rows: Object.entries(data).map(([k, v]) => [['key', keyValue(k)], ...Object.entries(v)]) };
+    }
+    return { format: 'Single JSON object', rows: [Object.entries(data)] };
+  }
+  throw new Error('Expected an array of objects, a single object, or JSON Lines.');
+}
+
+const quoteIdent = name => '[' + name.replace(/]/g, ']]') + ']';
+
+function quoteTable(name) {
+  const parts = (name.trim().match(/\[(?:[^\]]|\]\])*\]|[^.]+/g) || [])
+    .map(p => p.trim())
+    .filter(p => p && p !== '[]')
+    .map(p => p.startsWith('[') ? p : quoteIdent(p));
+  return parts.length ? parts.join('.') : '[MyTable]';
+}
+
+function numText(v) { return isRaw(v) ? v.rawJSON : String(v); }
+
+function sqlLiteral(v, unicode) {
+  if (v === null || v === undefined) return 'NULL';
+  if (isRaw(v) || typeof v === 'number') return numText(v);
+  if (typeof v === 'boolean') return v ? '1' : '0';
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return (unicode ? "N'" : "'") + s.replace(/'/g, "''") + "'";
+}
+
+// Picks the narrowest SQL Server type that holds every value in the column.
+function inferSqlType(values, unicode, stats) {
+  const s = { int: 0, dec: 0, exp: 0, bool: 0, date: 0, dt: 0, dto: 0, json: 0, nulls: 0,
+              intDigits: 0, scale: 0, frac: 0, fitsInt: true, fitsBig: true, len: 0 };
+  for (const v of values) {
+    if (v === null || v === undefined) { s.nulls++; continue; }
+    let text;
+    if (isRaw(v) || typeof v === 'number') {
+      text = numText(v);
+      if (typeof v === 'number' && Number.isInteger(v) && !Number.isSafeInteger(v)) stats.unsafe++;
+      const m = PLAIN_NUM_RE.exec(text);
+      if (!m) s.exp++;
+      else {
+        s.intDigits = Math.max(s.intDigits, m[1].replace(/^0+/, '').length);
+        if (m[2]) { s.dec++; s.scale = Math.max(s.scale, m[2].length); }
+        else {
+          s.int++;
+          const b = BigInt(text);
+          if (b < -2147483648n || b > 2147483647n) s.fitsInt = false;
+          if (b < -9223372036854775808n || b > 9223372036854775807n) s.fitsBig = false;
+        }
+      }
+    } else if (typeof v === 'boolean') {
+      s.bool++;
+      text = v ? '1' : '0';
+    } else if (typeof v === 'string') {
+      text = v;
+      const m = DATETIME_RE.exec(v);
+      if (DATE_RE.test(v)) s.date++;
+      else if (m) {
+        if (m[3]) s.dto++; else s.dt++;
+        const f = /\.(\d+)/.exec(m[2]);
+        s.frac = Math.max(s.frac, f ? Math.min(f[1].length, 7) : 0);
+      }
+    } else {
+      s.json++;
+      text = JSON.stringify(v);
+    }
+    s.len = Math.max(s.len, text.length);
+  }
+
+  const n = values.length - s.nulls;
+  const nullable = s.nulls > 0;
+  const str = unicode ? 'NVARCHAR' : 'VARCHAR';
+  const result = (type, cat) => ({ type, cat, nullable });
+  if (!n) return result(`${str}(50)`, 'null');
+  if (s.int + s.dec + s.exp === n) {
+    if (s.exp) return result('FLOAT', 'number');
+    if (s.dec) {
+      const p = Math.max(s.intDigits + s.scale, 1);
+      return result(p <= 38 ? `DECIMAL(${p},${s.scale})` : 'FLOAT', 'number');
+    }
+    if (s.fitsInt) return result('INT', 'number');
+    if (s.fitsBig) return result('BIGINT', 'number');
+    return result(s.intDigits <= 38 ? `DECIMAL(${s.intDigits},0)` : 'FLOAT', 'number');
+  }
+  if (s.bool === n) return result('BIT', 'boolean');
+  if (s.date === n) return result('DATE', 'date');
+  if (s.dto === n) return result(`DATETIMEOFFSET(${s.frac})`, 'date');
+  if (s.date + s.dt === n) return result(`DATETIME2(${s.frac})`, 'date');
+  const max = s.json || s.len > (unicode ? 4000 : 8000) ? 'MAX' : Math.max(s.len, 1);
+  return result(`${str}(${max})`, s.json === n ? 'json' : 'string');
+}
+
+function jsonToSql(text, o) {
+  const { data, ndjson } = parseJsonInput(text.replace(/^﻿/, ''));
+  const { format, rows: entryRows } = toEntryRows(data, ndjson);
+  if (!entryRows.length) throw new Error('No rows found — the JSON array is empty.');
+
+  // Columns in first-seen order; rows that lack a key get NULL there.
+  const index = new Map(), names = [];
+  const rows = entryRows.map(entries => {
+    const row = [];
+    for (const [k, v] of entries) {
+      let i = index.get(k);
+      if (i === undefined) { i = names.length; index.set(k, i); names.push(k); }
+      row[i] = v;
+    }
+    return row;
+  });
+  const width = names.length;
+  if (!width) throw new Error('The JSON objects have no keys to turn into columns.');
+
+  const warnings = [];
+  const { keys, renamed } = buildKeys(names, width, o.sqlKeys);
+  if (renamed.length) {
+    const list = renamed.slice(0, 5).map(([a, b]) => `${a} → ${b}`).join(', ');
+    warnings.push(`Duplicate column names renamed: ${list}${renamed.length > 5 ? ', …' : ''}`);
+  }
+  let sparse = 0;
+  for (const r of rows) if (r.length < width || r.includes(undefined)) sparse++;
+  if (sparse) warnings.push(`${sparse} row${sparse > 1 ? "s don't" : " doesn't"} have every key — the missing values are NULL.`);
+
+  const stats = { unsafe: 0 };
+  const types = keys.map((_, i) => inferSqlType(rows.map(r => r[i]), o.unicode, stats));
+  if (stats.unsafe) warnings.push(`${stats.unsafe} number${stats.unsafe > 1 ? 's are' : ' is'} too big for this browser to read exactly — check large IDs.`);
+
+  const tbl = quoteTable(o.table);
+  const cols = keys.map(quoteIdent);
+  const lit = v => sqlLiteral(v, o.unicode);
+  const valueList = r => Array.from({ length: width }, (_, i) => lit(r[i])).join(', ');
+  const body = [];
+  let statements = 0;
+
+  if (o.stmt === 'update') {
+    if (width < 2) throw new Error('UPDATE needs at least two columns — the first one is used to find each row.');
+    let skipped = 0;
+    const lines = [];
+    for (const r of rows) {
+      if (r[0] === null || r[0] === undefined) { skipped++; continue; }
+      const sets = cols.slice(1).map((c, j) => `${c} = ${lit(r[j + 1])}`).join(', ');
+      lines.push(`UPDATE ${tbl} SET ${sets} WHERE ${cols[0]} = ${lit(r[0])};`);
+    }
+    if (skipped) warnings.push(`${skipped} row${skipped > 1 ? 's were' : ' was'} skipped — “${keys[0]}” is NULL, so there's no row to match.`);
+    statements = lines.length;
+    body.push(lines.join('\n'));
+  } else {
+    const head = `INSERT INTO ${tbl} (${cols.join(', ')})`;
+    if (o.stmt === 'insertEach') {
+      body.push(rows.map(r => `${head} VALUES (${valueList(r)});`).join('\n'));
+      statements = rows.length;
+    } else {
+      for (let i = 0; i < rows.length; i += INSERT_BATCH) {
+        body.push(head + '\nVALUES\n' + rows.slice(i, i + INSERT_BATCH).map(r => `    (${valueList(r)})`).join(',\n') + ';');
+        statements++;
+      }
+    }
+  }
+
+  const identity = o.identity && o.stmt !== 'update';
+  const blocks = [];
+  if (o.tx) blocks.push('SET XACT_ABORT ON;\nBEGIN TRANSACTION;');
+  if (o.create) {
+    blocks.push(`CREATE TABLE ${tbl} (\n` +
+      cols.map((c, i) => `    ${c} ${types[i].type} ${types[i].nullable ? 'NULL' : 'NOT NULL'}`).join(',\n') + '\n);');
+  }
+  if (identity) blocks.push(`SET IDENTITY_INSERT ${tbl} ON;`);
+  blocks.push(...body);
+  if (identity) blocks.push(`SET IDENTITY_INSERT ${tbl} OFF;`);
+  if (o.tx) blocks.push('COMMIT TRANSACTION;');
+
+  return {
+    format,
+    keys,
+    sqlTypes: types.map(t => t.type),
+    categories: types.map(t => t.cat),
+    rowCount: rows.length,
+    sql: blocks.filter(Boolean).join('\n\n'),
+    statements,
+    warnings,
+  };
+}
+
+// ---- ui ----
+const $ = id => document.getElementById(id);
+const input = $('input'), output = $('output'), dex = $('dex');
+const OPTION_IDS = [
+  'format', 'shape', 'keys', 'indent', 'header', 'nulls', 'types', 'dates', 'emptyNull', 'trim',
+  'table', 'stmt', 'sqlKeys', 'create', 'unicode', 'tx', 'identity',
+];
+const STORAGE_KEY = 'sql-to-json:options';
+const SAMPLE = [
+  'CustomerID\tFirstName\tLastName\tEmail\tZipCode\tIsActive\tBalance\tCreatedAt\tManagerID',
+  '1\tJuan\tDela Cruz\tjuan@example.com\t01234\t1\t1500.75\t2024-01-15 10:30:00.000\tNULL',
+  '2\tMaria\tSantos\tmaria@example.com\t04100\t1\t0.00\t2024-02-03 08:05:12.123\t1',
+  '3\tJose\tRizal\tNULL\t03200\t0\t250.50\t2024-03-21 14:45:00.000\t1',
+].join('\r\n');
+const JSON_SAMPLE = `[
+  {
+    "customerId": 1,
+    "firstName": "Juan",
+    "lastName": "Dela Cruz",
+    "email": "juan@example.com",
+    "zipCode": "01234",
+    "isActive": true,
+    "balance": 1500.75,
+    "createdAt": "2024-01-15T10:30:00.000",
+    "tags": ["vip", "early-bird"],
+    "managerId": null
+  },
+  {
+    "customerId": 2,
+    "firstName": "Maria",
+    "lastName": "Santos",
+    "email": "maria@example.com",
+    "zipCode": "04100",
+    "isActive": true,
+    "balance": 0.00,
+    "createdAt": "2024-02-03T08:05:12.123",
+    "tags": [],
+    "managerId": 1
+  },
+  {
+    "customerId": 3,
+    "firstName": "Jose",
+    "lastName": "Rizal",
+    "email": null,
+    "zipCode": "03200",
+    "isActive": false,
+    "balance": 250.50,
+    "createdAt": "2024-03-21T14:45:00.000",
+    "tags": ["o'brien's pick"],
+    "managerId": 1
+  }
+]`;
+
+const MODES = {
+  toJson: {
+    inTitle: 'Paste SQL results', outTitle: 'JSON',
+    inLabel: 'SQL results input', outLabel: 'JSON output',
+    inPlaceholder: input.placeholder, outPlaceholder: 'Your JSON will appear here…',
+    sample: SAMPLE,
+  },
+  toSql: {
+    inTitle: 'Paste JSON', outTitle: 'SQL',
+    inLabel: 'JSON input', outLabel: 'SQL output',
+    inPlaceholder: '[\n  { "id": 1, "name": "Juan" },\n  { "id": 2, "name": "Maria" }\n]\n\nPaste here, or drop a .json file.',
+    outPlaceholder: 'Your SQL will appear here…',
+    sample: JSON_SAMPLE,
+  },
+};
+let mode = 'toJson';
+const drafts = { toJson: '', toSql: '' }; // each direction keeps its own input while you switch
+
+function readOptions() {
+  const o = { mode };
+  for (const id of OPTION_IDS) {
+    const el = $(id);
+    o[id] = el.type === 'checkbox' ? el.checked : el.value;
+  }
+  return o;
+}
+
+function restoreOptions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    if (saved.mode in MODES) mode = saved.mode;
+    for (const id of OPTION_IDS) {
+      if (!(id in saved)) continue;
+      const el = $(id);
+      if (el.type === 'checkbox') el.checked = !!saved[id];
+      else if (el.tagName !== 'SELECT') el.value = String(saved[id]);
+      else if ([...el.options].some(opt => opt.value === saved[id])) el.value = saved[id];
+    }
+  } catch { /* storage unavailable — defaults are fine */ }
+}
+
+function applyMode() {
+  const m = MODES[mode];
+  for (const el of document.querySelectorAll('[data-for]')) el.hidden = el.dataset.for !== mode;
+  for (const btn of document.querySelectorAll('[data-set-mode]')) btn.setAttribute('aria-pressed', btn.dataset.setMode === mode);
+  $('inTitle').textContent = m.inTitle;
+  $('outTitle').textContent = m.outTitle;
+  input.placeholder = m.inPlaceholder;
+  output.placeholder = m.outPlaceholder;
+  input.setAttribute('aria-label', m.inLabel);
+  output.setAttribute('aria-label', m.outLabel);
+}
+
+function setMode(next) {
+  if (next === mode) return;
+  drafts[mode] = input.value;
+  mode = next;
+  input.value = drafts[mode];
+  applyMode();
+  render();
+}
+
+function saveOptions(o) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(o)); } catch { /* ignore */ }
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function plural(n, word) { return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`; }
+
+function showMessages(list, cls) {
+  const box = $('msgs');
+  box.replaceChildren(...list.map(text => {
+    const div = document.createElement('div');
+    div.className = cls;
+    div.textContent = text;
+    return div;
+  }));
+}
+
+function render() {
+  const o = readOptions();
+  saveOptions(o);
+  const text = input.value;
+  const chips = $('chips');
+
+  if (!text.trim()) {
+    dex.dataset.state = 'idle';
+    output.value = '';
+    $('inStatus').textContent = 'Waiting for input…';
+    $('outStatus').textContent = '';
+    chips.replaceChildren();
+    showMessages([], '');
+    $('copyBtn').disabled = $('downloadBtn').disabled = true;
+    return;
+  }
+
+  const toSql = mode === 'toSql';
+  let res;
+  try {
+    res = toSql ? jsonToSql(text, o) : convertText(text, o);
+  } catch (err) {
+    dex.dataset.state = 'error';
+    output.value = '';
+    $('outStatus').textContent = '';
+    showMessages([`Couldn't convert: ${err.message}`], 'error');
+    $('copyBtn').disabled = $('downloadBtn').disabled = true;
+    return;
+  }
+
+  const out = toSql ? res.sql : res.json;
+  output.value = out;
+  const source = toSql ? res.format : `${FORMAT_NAMES[res.format]}${o.format === 'auto' ? ' · auto-detected' : ''}`;
+  $('inStatus').textContent = `${source} · ${plural(res.rowCount, 'row')} · ${plural(res.keys.length, 'column')}`;
+
+  const MAX_CHIPS = 80;
+  const chipEls = res.keys.slice(0, MAX_CHIPS).map((key, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.textContent = key;
+    const type = document.createElement('i');
+    type.className = `t-${toSql ? res.categories[i] : res.columnTypes[i]}`;
+    type.textContent = toSql ? res.sqlTypes[i] : res.columnTypes[i];
+    chip.append(type);
+    return chip;
+  });
+  if (res.keys.length > MAX_CHIPS) {
+    const more = document.createElement('span');
+    more.className = 'chip more';
+    more.textContent = `+${res.keys.length - MAX_CHIPS} more`;
+    chipEls.push(more);
+  }
+  chips.replaceChildren(...chipEls);
+
+  const size = formatBytes(new Blob([out]).size);
+  $('outStatus').textContent = toSql ? `${plural(res.statements, 'statement')} · ${size}` : size;
+  showMessages(res.warnings, 'warn');
+  dex.dataset.state = res.warnings.length ? 'warn' : 'ok';
+  $('copyBtn').disabled = $('downloadBtn').disabled = !out;
+}
+
+let timer;
+const renderSoon = () => {
+  clearTimeout(timer);
+  timer = setTimeout(render, input.value.length > 200000 ? 300 : 80);
+};
+input.addEventListener('input', renderSoon);
+$('table').addEventListener('input', renderSoon);
+for (const id of OPTION_IDS) $(id).addEventListener('change', render);
+for (const btn of document.querySelectorAll('[data-set-mode]')) {
+  btn.addEventListener('click', () => setMode(btn.dataset.setMode));
+}
+
+$('sampleBtn').addEventListener('click', () => { input.value = MODES[mode].sample; render(); });
+$('clearBtn').addEventListener('click', () => { input.value = ''; render(); input.focus(); });
+
+$('copyBtn').addEventListener('click', async () => {
+  const btn = $('copyBtn');
+  try {
+    await navigator.clipboard.writeText(output.value);
+  } catch {
+    output.select();
+    document.execCommand('copy');
+  }
+  btn.textContent = 'Gotcha!';
+  dex.classList.add('flash');
+  setTimeout(() => dex.classList.remove('flash'), 220);
+  setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+});
+
+$('downloadBtn').addEventListener('click', () => {
+  let name = 'sql-results.json', type = 'application/json';
+  if (mode === 'toSql') { name = 'sqldex.sql'; type = 'application/sql'; }
+  else if ($('shape').value === 'ndjson') { name = 'sql-results.ndjson'; type = 'application/x-ndjson'; }
+  const blob = new Blob([output.value], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+const inputPane = $('inputPane');
+inputPane.addEventListener('dragover', e => { e.preventDefault(); inputPane.classList.add('dropping'); });
+inputPane.addEventListener('dragleave', e => {
+  if (!inputPane.contains(e.relatedTarget)) inputPane.classList.remove('dropping');
+});
+inputPane.addEventListener('drop', async e => {
+  e.preventDefault();
+  inputPane.classList.remove('dropping');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  input.value = await file.text();
+  render();
+});
+
+restoreOptions();
+applyMode();
+render();
+</script>
+</body>
+</html>
