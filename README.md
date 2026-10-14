@@ -3,6 +3,8 @@
 A Pokédex-themed, pixel-art converter between **SQL Server results and JSON**, in both directions.
 It's a single `index.html` with no build step and no dependencies. Your data never leaves the browser.
 
+**Try it live: https://pauljohnfabic.github.io/sqldex-sqlToJson/**
+
 ## SQL → JSON
 
 In SSMS, select your results in the grid → right-click → **Copy with Headers** (`Ctrl`+`Shift`+`C`) and paste.
@@ -23,7 +25,7 @@ Paste a JSON array of objects, JSON Lines, or a single object.
 
 ## Usage
 
-Open `index.html` in any modern browser. The pixel fonts load from Google Fonts; without a connection the page falls back to a monospace font and still works.
+Use the live page above, or download `index.html` and open it in any modern browser. The pixel fonts load from Google Fonts; without a connection the page falls back to a monospace font and still works.
 
 ## License
 
