@@ -153,7 +153,9 @@
   /* ---- lid: lens, LEDs, logo, direction switch ---- */
   .lid {
     --lid-x: 144px;
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 20;
     margin: 0 -20px;
     padding: 12px 20px 28px;
     display: flex;
@@ -354,6 +356,38 @@
   }
   input[type="checkbox"]:hover { opacity: 0.7; }
   input[type="checkbox"]:checked { filter: none; opacity: 1; }
+
+  /* ---- column picker modal ---- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 50;
+  }
+  .modal {
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--edge), inset 0 0 0 3px var(--panel), inset 0 0 0 5px var(--dialog-ring);
+    width: 100%;
+    max-width: 420px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+  }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .modal-head h2 { margin: 0; font: 10px/1 var(--pixel-font); text-transform: uppercase; }
+  .modal-head button { font: 20px/1 var(--text-font); padding: 2px 10px 5px; min-width: 0; }
+  .modal-actions { display: flex; gap: 10px; }
+  .modal-list { overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+  .modal-list label { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+  .modal-list .blank-tag { font-size: 14px; color: var(--muted); }
+  .modal-empty { color: var(--muted); font-size: 18px; }
 
   /* ---- buttons ---- */
   button {
@@ -648,6 +682,7 @@
     </div>
     <div class="checks">
       <label><input type="checkbox" id="header" checked> First row is column names</label>
+      <label><input type="checkbox" id="dropBlankCols" checked> Drop columns with a blank header</label>
       <label><input type="checkbox" id="nulls" checked> NULL → null</label>
       <label><input type="checkbox" id="types" checked> Detect numbers &amp; booleans</label>
       <label><input type="checkbox" id="dates"> Dates → ISO 8601</label>
@@ -680,8 +715,16 @@
     <div class="checks">
       <label><input type="checkbox" id="create" checked> CREATE TABLE</label>
       <label><input type="checkbox" id="unicode" checked> Unicode (N'…', NVARCHAR)</label>
-      <label><input type="checkbox" id="tx"> Wrap in transaction</label>
       <label><input type="checkbox" id="identity"> IDENTITY_INSERT ON</label>
+    </div>
+    <div class="field">
+      <label for="txMode">Transaction wrapping</label>
+      <span class="select"><select id="txMode">
+        <option value="none">None</option>
+        <option value="tx">Wrap in transaction</option>
+        <option value="rollback">Rollback on error (TRY/CATCH)</option>
+        <option value="dryRun">Test run (BEGIN TRAN … ROLLBACK TRAN)</option>
+      </select></span>
     </div>
     </div>
   </section>
@@ -693,6 +736,7 @@
         <div class="actions">
           <button type="button" id="sampleBtn">Sample</button>
           <button type="button" id="clearBtn">Clear</button>
+          <button type="button" id="columnsBtn">Columns…</button>
         </div>
       </div>
       <div class="screen">
@@ -722,6 +766,20 @@
       </div>
     </section>
   </main>
+
+  <div class="modal-overlay" id="colModalOverlay" hidden>
+    <div class="modal" role="dialog" aria-label="Choose columns" aria-modal="true">
+      <div class="modal-head">
+        <h2>Columns</h2>
+        <button type="button" id="colModalClose" aria-label="Close">×</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="colSelectAll">Select all</button>
+        <button type="button" id="colSelectNone">Select none</button>
+      </div>
+      <div class="modal-list" id="colList"></div>
+    </div>
+  </div>
 
   <footer class="dex-foot">
     <div class="dpad" aria-hidden="true">
@@ -837,11 +895,18 @@ function transformKey(name, mode) {
   }
 }
 
-function buildKeys(headerRow, width, mode) {
+// The raw, pre-transform display name for a column: the header cell's text,
+// or "ColumnN" when it's blank/missing. Shared by buildKeys, the column
+// picker modal, and the exclusion filter so they agree on what a column is called.
+function rawColumnName(headerRow, i) {
+  const name = headerRow ? (headerRow[i] ?? '').trim() : '';
+  return (!name || name === '(No column name)') ? `Column${i + 1}` : name;
+}
+
+function buildKeys(headerRow, colIndices, mode) {
   const keys = [], renamed = [], used = new Set();
-  for (let i = 0; i < width; i++) {
-    let name = headerRow ? (headerRow[i] ?? '').trim() : '';
-    if (!name || name === '(No column name)') name = `Column${i + 1}`;
+  for (const i of colIndices) {
+    let name = rawColumnName(headerRow, i);
     name = transformKey(name, mode) || transformKey(`Column${i + 1}`, mode);
     let key = name;
     for (let n = 2; used.has(key); n++) key = `${name}_${n}`;
@@ -894,7 +959,24 @@ function listStr(items, ind, open, close) {
   return open + '\n' + items.map(s => ind + s).join(',\n') + '\n' + close;
 }
 
-function convertText(text, o) {
+// Columns as detected from the raw input, independent of dropBlankCols/exclusion —
+// what the column picker modal lists so you can check/uncheck them.
+function detectColumns(text, o) {
+  text = text.replace(/^﻿/, '').replace(/^(?:[ \t]*(?:\r\n|\n|\r))+/, '');
+  const format = o.format === 'auto' ? detectFormat(text) : o.format;
+  const rows = parseRows(text, format);
+  let width = 0;
+  for (const r of rows) if (r.length > width) width = r.length;
+  const headerRow = o.header ? rows[0] : null;
+  const cols = [];
+  for (let i = 0; i < width; i++) {
+    const raw = headerRow ? (headerRow[i] ?? '').trim() : '';
+    cols.push({ name: rawColumnName(headerRow, i), blank: !raw || raw === '(No column name)' });
+  }
+  return cols;
+}
+
+function convertText(text, o, excluded = new Set()) {
   text = text.replace(/^﻿/, '').replace(/^(?:[ \t]*(?:\r\n|\n|\r))+/, '');
   const format = o.format === 'auto' ? detectFormat(text) : o.format;
   const rows = parseRows(text, format);
@@ -904,7 +986,26 @@ function convertText(text, o) {
   for (const r of rows) if (r.length > width) width = r.length;
   const headerRow = o.header ? rows[0] : null;
   const dataRows = o.header ? rows.slice(1) : rows;
-  const { keys, renamed } = buildKeys(headerRow, width, o.keys);
+
+  let colIndices = Array.from({ length: width }, (_, i) => i);
+  if (headerRow && o.dropBlankCols) {
+    colIndices = colIndices.filter(i => {
+      const name = (headerRow[i] ?? '').trim();
+      return name && name !== '(No column name)';
+    });
+  }
+  const dropped = width - colIndices.length;
+  if (dropped) warnings.push(`${dropped} column${dropped > 1 ? 's' : ''} with a blank header ${dropped > 1 ? 'were' : 'was'} dropped.`);
+
+  if (excluded.size) {
+    const before = colIndices.length;
+    colIndices = colIndices.filter(i => !excluded.has(rawColumnName(headerRow, i)));
+    const hidden = before - colIndices.length;
+    if (hidden) warnings.push(`${hidden} column${hidden > 1 ? 's' : ''} hidden via the column picker.`);
+  }
+  if (!colIndices.length) warnings.push('All columns are hidden — pick at least one in the column picker.');
+
+  const { keys, renamed } = buildKeys(headerRow, colIndices, o.keys);
 
   if (renamed.length) {
     const list = renamed.slice(0, 5).map(([a, b]) => `${a} → ${b}`).join(', ');
@@ -918,8 +1019,11 @@ function convertText(text, o) {
   let ragged = 0;
   const records = dataRows.map(r => {
     if (r.length < width) ragged++;
-    const vals = new Array(width);
-    for (let i = 0; i < width; i++) vals[i] = i < r.length ? convertValue(r[i], o, stats) : null;
+    const vals = new Array(colIndices.length);
+    for (let j = 0; j < colIndices.length; j++) {
+      const i = colIndices[j];
+      vals[j] = i < r.length ? convertValue(r[i], o, stats) : null;
+    }
     return vals;
   });
   if (ragged) warnings.push(`${ragged} row${ragged > 1 ? 's have' : ' has'} missing cells — filled with null. Check the input format.`);
@@ -1108,7 +1212,19 @@ function inferSqlType(values, unicode, stats) {
   return result(`${str}(${max})`, s.json === n ? 'json' : 'string');
 }
 
-function jsonToSql(text, o) {
+// Columns as detected from the raw JSON input, independent of exclusion —
+// what the column picker modal lists so you can check/uncheck them.
+function detectJsonColumns(text) {
+  const { data, ndjson } = parseJsonInput(text.replace(/^﻿/, ''));
+  const { rows: entryRows } = toEntryRows(data, ndjson);
+  const seen = new Set(), names = [];
+  for (const entries of entryRows) {
+    for (const [k] of entries) if (!seen.has(k)) { seen.add(k); names.push(k); }
+  }
+  return names.map(name => ({ name, blank: false }));
+}
+
+function jsonToSql(text, o, excluded = new Set()) {
   const { data, ndjson } = parseJsonInput(text.replace(/^﻿/, ''));
   const { format, rows: entryRows } = toEntryRows(data, ndjson);
   if (!entryRows.length) throw new Error('No rows found — the JSON array is empty.');
@@ -1128,34 +1244,44 @@ function jsonToSql(text, o) {
   if (!width) throw new Error('The JSON objects have no keys to turn into columns.');
 
   const warnings = [];
-  const { keys, renamed } = buildKeys(names, width, o.sqlKeys);
+  let colIndices = names.map((_, i) => i);
+  if (excluded.size) {
+    const before = colIndices.length;
+    colIndices = colIndices.filter(i => !excluded.has(names[i]));
+    const hidden = before - colIndices.length;
+    if (hidden) warnings.push(`${hidden} column${hidden > 1 ? 's' : ''} hidden via the column picker.`);
+  }
+  if (!colIndices.length) throw new Error('All columns are hidden — pick at least one in the column picker.');
+
+  const { keys, renamed } = buildKeys(names, colIndices, o.sqlKeys);
   if (renamed.length) {
     const list = renamed.slice(0, 5).map(([a, b]) => `${a} → ${b}`).join(', ');
     warnings.push(`Duplicate column names renamed: ${list}${renamed.length > 5 ? ', …' : ''}`);
   }
   let sparse = 0;
-  for (const r of rows) if (r.length < width || r.includes(undefined)) sparse++;
+  for (const r of rows) if (colIndices.some(i => r[i] === undefined)) sparse++;
   if (sparse) warnings.push(`${sparse} row${sparse > 1 ? "s don't" : " doesn't"} have every key — the missing values are NULL.`);
 
   const stats = { unsafe: 0 };
-  const types = keys.map((_, i) => inferSqlType(rows.map(r => r[i]), o.unicode, stats));
+  const types = keys.map((_, i) => inferSqlType(rows.map(r => r[colIndices[i]]), o.unicode, stats));
   if (stats.unsafe) warnings.push(`${stats.unsafe} number${stats.unsafe > 1 ? 's are' : ' is'} too big for this browser to read exactly — check large IDs.`);
 
   const tbl = quoteTable(o.table);
   const cols = keys.map(quoteIdent);
   const lit = v => sqlLiteral(v, o.unicode);
-  const valueList = r => Array.from({ length: width }, (_, i) => lit(r[i])).join(', ');
+  const valueList = r => colIndices.map(i => lit(r[i])).join(', ');
   const body = [];
   let statements = 0;
 
   if (o.stmt === 'update') {
-    if (width < 2) throw new Error('UPDATE needs at least two columns — the first one is used to find each row.');
+    if (colIndices.length < 2) throw new Error('UPDATE needs at least two columns — the first one is used to find each row.');
     let skipped = 0;
     const lines = [];
     for (const r of rows) {
-      if (r[0] === null || r[0] === undefined) { skipped++; continue; }
-      const sets = cols.slice(1).map((c, j) => `${c} = ${lit(r[j + 1])}`).join(', ');
-      lines.push(`UPDATE ${tbl} SET ${sets} WHERE ${cols[0]} = ${lit(r[0])};`);
+      const idIndex = colIndices[0];
+      if (r[idIndex] === null || r[idIndex] === undefined) { skipped++; continue; }
+      const sets = cols.slice(1).map((c, j) => `${c} = ${lit(r[colIndices[j + 1]])}`).join(', ');
+      lines.push(`UPDATE ${tbl} SET ${sets} WHERE ${cols[0]} = ${lit(r[idIndex])};`);
     }
     if (skipped) warnings.push(`${skipped} row${skipped > 1 ? 's were' : ' was'} skipped — “${keys[0]}” is NULL, so there's no row to match.`);
     statements = lines.length;
@@ -1174,8 +1300,11 @@ function jsonToSql(text, o) {
   }
 
   const identity = o.identity && o.stmt !== 'update';
+  const useTx = o.txMode === 'tx' || o.txMode === 'rollback' || o.txMode === 'dryRun'; // rollback/dryRun need a transaction to roll back
   const blocks = [];
-  if (o.tx) blocks.push('SET XACT_ABORT ON;\nBEGIN TRANSACTION;');
+  if (o.txMode === 'dryRun') blocks.push('BEGIN TRAN;');
+  else if (o.txMode === 'rollback') blocks.push('SET XACT_ABORT ON;\n\nBEGIN TRY\n    BEGIN TRAN;');
+  else if (useTx) blocks.push('SET XACT_ABORT ON;\nBEGIN TRANSACTION;');
   if (o.create) {
     blocks.push(`CREATE TABLE ${tbl} (\n` +
       cols.map((c, i) => `    ${c} ${types[i].type} ${types[i].nullable ? 'NULL' : 'NOT NULL'}`).join(',\n') + '\n);');
@@ -1183,7 +1312,13 @@ function jsonToSql(text, o) {
   if (identity) blocks.push(`SET IDENTITY_INSERT ${tbl} ON;`);
   blocks.push(...body);
   if (identity) blocks.push(`SET IDENTITY_INSERT ${tbl} OFF;`);
-  if (o.tx) blocks.push('COMMIT TRANSACTION;');
+  if (o.txMode === 'dryRun') {
+    blocks.push('ROLLBACK TRAN;');
+  } else if (o.txMode === 'rollback') {
+    blocks.push('    COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\n    IF XACT_STATE() <> 0\n        ROLLBACK TRAN;\n\n    THROW;\nEND CATCH;');
+  } else if (useTx) {
+    blocks.push('COMMIT TRANSACTION;');
+  }
 
   return {
     format,
@@ -1201,10 +1336,21 @@ function jsonToSql(text, o) {
 const $ = id => document.getElementById(id);
 const input = $('input'), output = $('output'), dex = $('dex');
 const OPTION_IDS = [
-  'format', 'shape', 'keys', 'indent', 'header', 'nulls', 'types', 'dates', 'emptyNull', 'trim',
-  'table', 'stmt', 'sqlKeys', 'create', 'unicode', 'tx', 'identity',
+  'format', 'shape', 'keys', 'indent', 'header', 'dropBlankCols', 'nulls', 'types', 'dates', 'emptyNull', 'trim',
+  'table', 'stmt', 'sqlKeys', 'create', 'unicode', 'txMode', 'identity',
 ];
 const STORAGE_KEY = 'sql-to-json:options';
+const EXCLUDED_KEYS = { toJson: 'sql-to-json:excludedColumns', toSql: 'sql-to-json:excludedSqlColumns' };
+const excludedByMode = { toJson: new Set(), toSql: new Set() };
+function loadExcludedColumns() {
+  for (const m of Object.keys(EXCLUDED_KEYS)) {
+    try { excludedByMode[m] = new Set(JSON.parse(localStorage.getItem(EXCLUDED_KEYS[m]) || '[]')); }
+    catch { excludedByMode[m] = new Set(); }
+  }
+}
+function saveExcludedColumns(m) {
+  try { localStorage.setItem(EXCLUDED_KEYS[m], JSON.stringify([...excludedByMode[m]])); } catch { /* ignore */ }
+}
 const SAMPLE = [
   'CustomerID\tFirstName\tLastName\tEmail\tZipCode\tIsActive\tBalance\tCreatedAt\tManagerID',
   '1\tJuan\tDela Cruz\tjuan@example.com\t01234\t1\t1500.75\t2024-01-15 10:30:00.000\tNULL',
@@ -1309,6 +1455,7 @@ function setMode(next) {
   mode = next;
   input.value = drafts[mode];
   applyMode();
+  $('colModalOverlay').hidden = true;
   render();
 }
 
@@ -1354,7 +1501,7 @@ function render() {
   const toSql = mode === 'toSql';
   let res;
   try {
-    res = toSql ? jsonToSql(text, o) : convertText(text, o);
+    res = toSql ? jsonToSql(text, o, excludedByMode.toSql) : convertText(text, o, excludedByMode.toJson);
   } catch (err) {
     dex.dataset.state = 'error';
     output.value = '';
@@ -1436,6 +1583,83 @@ $('downloadBtn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 
+function currentColumns() {
+  try {
+    return mode === 'toSql' ? detectJsonColumns(input.value) : detectColumns(input.value, readOptions());
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+function renderColumnList() {
+  const cols = currentColumns();
+  const excluded = excludedByMode[mode];
+  const list = $('colList');
+  if (!Array.isArray(cols)) {
+    const empty = document.createElement('p');
+    empty.className = 'modal-empty';
+    empty.textContent = `Couldn't read the input: ${cols.error}`;
+    list.replaceChildren(empty);
+    return;
+  }
+  if (!cols.length) {
+    const empty = document.createElement('p');
+    empty.className = 'modal-empty';
+    empty.textContent = 'Paste some data first — no columns detected yet.';
+    list.replaceChildren(empty);
+    return;
+  }
+  const labels = cols.map(col => {
+    const label = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !excluded.has(col.name);
+    cb.dataset.col = col.name;
+    cb.addEventListener('change', () => {
+      if (cb.checked) excluded.delete(col.name); else excluded.add(col.name);
+      saveExcludedColumns(mode);
+      render();
+    });
+    label.append(cb, document.createTextNode(col.name));
+    if (col.blank) {
+      const tag = document.createElement('span');
+      tag.className = 'blank-tag';
+      tag.textContent = '(blank header)';
+      label.append(tag);
+    }
+    return label;
+  });
+  list.replaceChildren(...labels);
+}
+
+function openColumnPicker() {
+  renderColumnList();
+  $('colModalOverlay').hidden = false;
+}
+
+function closeColumnPicker() {
+  $('colModalOverlay').hidden = true;
+}
+
+$('columnsBtn').addEventListener('click', openColumnPicker);
+$('colModalClose').addEventListener('click', closeColumnPicker);
+$('colModalOverlay').addEventListener('click', e => { if (e.target === $('colModalOverlay')) closeColumnPicker(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('colModalOverlay').hidden) closeColumnPicker(); });
+
+$('colSelectAll').addEventListener('click', () => {
+  excludedByMode[mode].clear();
+  saveExcludedColumns(mode);
+  renderColumnList();
+  render();
+});
+$('colSelectNone').addEventListener('click', () => {
+  const cols = currentColumns();
+  if (Array.isArray(cols)) for (const col of cols) excludedByMode[mode].add(col.name);
+  saveExcludedColumns(mode);
+  renderColumnList();
+  render();
+});
+
 const inputPane = $('inputPane');
 inputPane.addEventListener('dragover', e => { e.preventDefault(); inputPane.classList.add('dropping'); });
 inputPane.addEventListener('dragleave', e => {
@@ -1451,6 +1675,7 @@ inputPane.addEventListener('drop', async e => {
 });
 
 restoreOptions();
+loadExcludedColumns();
 applyMode();
 render();
 </script>

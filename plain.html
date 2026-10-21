@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sqlToJson (plain)</title>
+<meta name="description" content="Paste a table from Excel, Google Sheets or SQL Server and get JSON, right in your browser.">
+</head>
+<body>
+<header>
+  <h1>sqlToJson</h1>
+  <p>Paste a table from Excel, Google Sheets or SQL Server results, headers included, and get JSON back with one property per column.</p>
+</header>
+
+<p>
+  <b>Excel / Google Sheets:</b> select the cells including the header row, then <kbd>Ctrl</kbd>+<kbd>C</kbd>.<br>
+  <b>SQL Server (SSMS):</b> select your results → right-click → <b>Copy with Headers</b>
+  (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>).<br>
+  Then paste into panel 1. CSV and “Results to Text” output work too.
+</p>
+
+<fieldset>
+  <legend>Options</legend>
+  <p>
+    <label for="format">Input format</label>
+    <select id="format">
+      <option value="auto">Auto-detect</option>
+      <option value="tab">Tab (Excel / Google Sheets / SSMS grid)</option>
+      <option value="fixed">Results to Text</option>
+      <option value="comma">Comma (CSV)</option>
+      <option value="semicolon">Semicolon</option>
+      <option value="pipe">Pipe |</option>
+    </select>
+  </p>
+  <p>
+    <label for="shape">Output shape</label>
+    <select id="shape">
+      <option value="objects">Array of objects</option>
+      <option value="keyed">Object keyed by 1st column</option>
+      <option value="columns">Columns + rows</option>
+      <option value="ndjson">JSON Lines (NDJSON)</option>
+    </select>
+  </p>
+  <p>
+    <label for="keys">Property names</label>
+    <select id="keys">
+      <option value="keep">Same as column headers</option>
+      <option value="camel">camelCase</option>
+      <option value="snake">snake_case</option>
+      <option value="lower">lowercase</option>
+    </select>
+  </p>
+  <p>
+    <label for="indent">Indent</label>
+    <select id="indent">
+      <option value="2">2 spaces</option>
+      <option value="4">4 spaces</option>
+      <option value="tab">Tab</option>
+      <option value="0">Minified</option>
+    </select>
+  </p>
+  <p>
+    <label><input type="checkbox" id="header" checked> First row is column names</label><br>
+    <label><input type="checkbox" id="dropBlankCols" checked> Drop columns with a blank header</label><br>
+    <label><input type="checkbox" id="nulls" checked> NULL → null</label><br>
+    <label><input type="checkbox" id="types" checked> Detect numbers &amp; booleans</label><br>
+    <label><input type="checkbox" id="dates"> Dates → ISO 8601</label><br>
+    <label><input type="checkbox" id="emptyNull"> Empty cells → null</label><br>
+    <label><input type="checkbox" id="trim" checked> Trim spaces</label>
+  </p>
+</fieldset>
+
+<main>
+  <section>
+    <h2>1. Paste your table</h2>
+    <p>
+      <button type="button" id="sampleBtn">Sample</button>
+      <button type="button" id="clearBtn">Clear</button>
+      <label for="file">Open a file:</label>
+      <input type="file" id="file" accept=".csv,.tsv,.txt">
+    </p>
+    <p>
+      <textarea id="input" rows="16" cols="80" wrap="off" spellcheck="false" autocomplete="off" aria-label="Table input"
+        placeholder="CustomerID&#9;Name&#9;Email&#10;1&#9;Juan&#9;juan@example.com&#10;2&#9;Maria&#9;NULL&#10;&#10;Paste from Excel, Google Sheets or SSMS here, or drop a .csv / .tsv / .txt file."></textarea>
+    </p>
+    <p id="inStatus">Waiting for input…</p>
+    <table id="columns" hidden>
+      <caption>Columns</caption>
+      <thead><tr><th>Name</th><th>Type</th></tr></thead>
+      <tbody id="columnRows"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>2. JSON</h2>
+    <p>
+      <button type="button" id="copyBtn" disabled>Copy</button>
+      <button type="button" id="downloadBtn" disabled>Download</button>
+    </p>
+    <p>
+      <textarea id="output" rows="16" cols="80" wrap="off" readonly spellcheck="false" aria-label="JSON output" placeholder="Your JSON will appear here…"></textarea>
+    </p>
+    <p id="outStatus"></p>
+    <ul id="msgs" hidden></ul>
+  </section>
+</main>
+
+<footer>
+  <p>Runs entirely in your browser — your data is never uploaded anywhere.</p>
+</footer>
+
+<script>
+// ---- core ----
+const FORMAT_NAMES = {
+  tab: 'Tab-separated (Excel / Google Sheets / SSMS grid)',
+  fixed: 'Fixed-width (SSMS Results to Text)',
+  comma: 'Comma-separated (CSV)',
+  semicolon: 'Semicolon-separated',
+  pipe: 'Pipe-separated',
+};
+const DELIMS = { comma: ',', semicolon: ';', pipe: '|' };
+
+const LINE_RE = /\r\n|\n|\r/;
+const DASH_LINE_RE = /^-+( +-+)*\s*$/;
+const INT_RE = /^-?\d+$/;
+const DEC_RE = /^-?\d+\.\d+$/;
+const EXP_RE = /^-?\d+(\.\d+)?[eE][+-]?\d+$/;
+const LEADING_ZERO_RE = /^-?0\d/;
+const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(?: ?([+-]\d{2}:\d{2}|Z))?$/;
+
+function detectFormat(text) {
+  const head = text.slice(0, 20000).split(LINE_RE);
+  if (head.length > 1 && DASH_LINE_RE.test(head[1])) return 'fixed';
+  if (head[0].includes('\t')) return 'tab';
+  let best = 'tab', max = 0;
+  for (const [name, d] of Object.entries(DELIMS)) {
+    const count = head[0].split(d).length - 1;
+    if (count > max) { max = count; best = name; }
+  }
+  return best;
+}
+
+function parseRows(text, format) {
+  if (format === 'fixed') return parseFixed(text);
+  if (format === 'tab') {
+    // SSMS doesn't quote values when copying, so a plain split is the faithful parse.
+    return text.split(LINE_RE)
+      .filter(line => line.includes('\t') || line.trim() !== '')
+      .map(line => line.split('\t'));
+  }
+  return parseQuoted(text, DELIMS[format]);
+}
+
+// RFC 4180-style parsing: "quoted, values" and "" escapes, newlines inside quotes.
+function parseQuoted(text, d) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c !== '"') field += c;
+      else if (text[i + 1] === '"') { field += '"'; i++; }
+      else inQuotes = false;
+    } else if (c === '"' && field === '') {
+      inQuotes = true;
+    } else if (c === d) {
+      row.push(field); field = '';
+    } else if (c === '\r' || c === '\n') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1 || r[0].trim() !== '');
+}
+
+// SSMS "Results to Text": header line, a line of dashes marking each column's width, then rows.
+function parseFixed(text) {
+  const lines = text.split(LINE_RE);
+  const starts = [];
+  for (const m of lines[1].matchAll(/-+/g)) starts.push(m.index);
+  const cut = line => starts.map((s, k) => line.slice(s, starts[k + 1]).trim());
+  const rows = [cut(lines[0])];
+  for (const line of lines.slice(2)) {
+    const t = line.trim();
+    if (t === '' || /^\(\d+ rows? affected\)$/i.test(t) || /^Completion time:/i.test(t)) continue;
+    rows.push(cut(line));
+  }
+  return rows;
+}
+
+function splitWords(name) {
+  return name
+    .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, '$1 $2')
+    .replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, '$1 $2')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map(w => w.toLowerCase());
+}
+
+function transformKey(name, mode) {
+  switch (mode) {
+    case 'camel': return splitWords(name).map((w, i) => i ? w[0].toUpperCase() + w.slice(1) : w).join('');
+    case 'pascal': return splitWords(name).map(w => w[0].toUpperCase() + w.slice(1)).join('');
+    case 'snake': return splitWords(name).join('_');
+    case 'lower': return name.toLowerCase();
+    default: return name;
+  }
+}
+
+function buildKeys(headerRow, colIndices, mode) {
+  const keys = [], renamed = [], used = new Set();
+  for (const i of colIndices) {
+    let name = headerRow ? (headerRow[i] ?? '').trim() : '';
+    if (!name || name === '(No column name)') name = `Column${i + 1}`;
+    name = transformKey(name, mode) || transformKey(`Column${i + 1}`, mode);
+    let key = name;
+    for (let n = 2; used.has(key); n++) key = `${name}_${n}`;
+    if (key !== name) renamed.push([name, key]);
+    used.add(key);
+    keys.push(key);
+  }
+  return { keys, renamed };
+}
+
+function convertValue(raw, o, stats) {
+  const v = o.trim ? raw.trim() : raw;
+  if (o.nulls && v === 'NULL') return null;
+  if (v === '') return o.emptyNull ? null : '';
+  if (o.types) {
+    const isInt = INT_RE.test(v);
+    if (isInt || DEC_RE.test(v) || EXP_RE.test(v)) {
+      // Leading zeros (zip codes, account numbers) stay strings.
+      if (LEADING_ZERO_RE.test(v)) return v;
+      const n = Number(v);
+      const digits = v.replace(/[eE].*$/, '').replace(/[-.]/g, '').replace(/^0+/, '').length;
+      const exact = isInt ? Number.isSafeInteger(n) : digits <= 15 && Number.isFinite(n);
+      if (exact) return n;
+      stats.keptBig++;
+      return v;
+    }
+    const lower = v.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+  }
+  if (o.dates) {
+    const m = DATETIME_RE.exec(v);
+    if (m) return `${m[1]}T${m[2]}${m[3] || ''}`;
+  }
+  return v;
+}
+
+// Hand-rolled serializers keep SQL column order; plain JS objects would hoist
+// integer-like keys (e.g. pivot columns "2023", "2024") to the front.
+function objStr(qk, vals, ind, depth) {
+  if (!qk.length) return '{}';
+  if (!ind) return '{' + qk.map((k, i) => k + ':' + JSON.stringify(vals[i])).join(',') + '}';
+  const pad = ind.repeat(depth + 1);
+  return '{\n' + qk.map((k, i) => pad + k + ': ' + JSON.stringify(vals[i])).join(',\n') + '\n' + ind.repeat(depth) + '}';
+}
+
+function listStr(items, ind, open, close) {
+  if (!items.length) return open + close;
+  if (!ind) return open + items.join(',') + close;
+  return open + '\n' + items.map(s => ind + s).join(',\n') + '\n' + close;
+}
+
+function convertText(text, o) {
+  text = text.replace(/^﻿/, '').replace(/^(?:[ \t]*(?:\r\n|\n|\r))+/, '');
+  const format = o.format === 'auto' ? detectFormat(text) : o.format;
+  const rows = parseRows(text, format);
+  const warnings = [];
+
+  let width = 0;
+  for (const r of rows) if (r.length > width) width = r.length;
+  const headerRow = o.header ? rows[0] : null;
+  const dataRows = o.header ? rows.slice(1) : rows;
+
+  let colIndices = Array.from({ length: width }, (_, i) => i);
+  if (headerRow && o.dropBlankCols) {
+    colIndices = colIndices.filter(i => {
+      const name = (headerRow[i] ?? '').trim();
+      return name && name !== '(No column name)';
+    });
+  }
+  const dropped = width - colIndices.length;
+  if (dropped) warnings.push(`${dropped} column${dropped > 1 ? 's' : ''} with a blank header ${dropped > 1 ? 'were' : 'was'} dropped.`);
+
+  const { keys, renamed } = buildKeys(headerRow, colIndices, o.keys);
+
+  if (renamed.length) {
+    const list = renamed.slice(0, 5).map(([a, b]) => `${a} → ${b}`).join(', ');
+    warnings.push(`Duplicate column names renamed: ${list}${renamed.length > 5 ? ', …' : ''}`);
+  }
+  if (headerRow && headerRow.length < width) {
+    warnings.push(`Some rows have more cells than the header; extra columns were named Column${headerRow.length + 1}…`);
+  }
+
+  const stats = { keptBig: 0 };
+  let ragged = 0;
+  const records = dataRows.map(r => {
+    if (r.length < width) ragged++;
+    const vals = new Array(colIndices.length);
+    for (let j = 0; j < colIndices.length; j++) {
+      const i = colIndices[j];
+      vals[j] = i < r.length ? convertValue(r[i], o, stats) : null;
+    }
+    return vals;
+  });
+  if (ragged) warnings.push(`${ragged} row${ragged > 1 ? 's have' : ' has'} missing cells — filled with null. Check the input format.`);
+  if (stats.keptBig) warnings.push(`${stats.keptBig} number${stats.keptBig > 1 ? 's were' : ' was'} kept as a string to avoid losing precision (too many digits for JavaScript).`);
+
+  const columnTypes = keys.map((_, i) => {
+    const types = new Set();
+    for (const r of records) {
+      if (r[i] !== null) types.add(typeof r[i]);
+      if (types.size > 1) return 'mixed';
+    }
+    return types.size ? [...types][0] : 'null';
+  });
+
+  const ind = o.indent === 'tab' ? '\t' : ' '.repeat(Number(o.indent) || 0);
+  const qk = keys.map(k => JSON.stringify(k));
+  let json;
+  switch (o.shape) {
+    case 'ndjson':
+      json = records.map(r => objStr(qk, r, '', 0)).join('\n');
+      break;
+    case 'keyed': {
+      const map = new Map();
+      let dupes = 0;
+      for (const r of records) {
+        const k = String(r[0]);
+        if (map.has(k)) dupes++;
+        map.set(k, r.slice(1));
+      }
+      if (dupes) warnings.push(`${dupes} duplicate value${dupes > 1 ? 's' : ''} in “${keys[0]}” — later rows overwrote earlier ones.`);
+      const rest = qk.slice(1), sep = ind ? ': ' : ':';
+      json = listStr([...map].map(([k, v]) => JSON.stringify(k) + sep + objStr(rest, v, ind, 1)), ind, '{', '}');
+      break;
+    }
+    case 'columns':
+      json = ind
+        ? '{\n' + ind + '"columns": ' + JSON.stringify(keys) + ',\n' + ind + '"rows": ' +
+          (records.length ? '[\n' + records.map(r => ind + ind + JSON.stringify(r)).join(',\n') + '\n' + ind + ']' : '[]') + '\n}'
+        : JSON.stringify({ columns: keys, rows: records });
+      break;
+    default:
+      json = listStr(records.map(r => objStr(qk, r, ind, 1)), ind, '[', ']');
+  }
+
+  return { format, keys, columnTypes, rowCount: records.length, json, warnings };
+}
+
+// ---- ui ----
+const $ = id => document.getElementById(id);
+const input = $('input'), output = $('output');
+const OPTION_IDS = ['format', 'shape', 'keys', 'indent', 'header', 'dropBlankCols', 'nulls', 'types', 'dates', 'emptyNull', 'trim'];
+const STORAGE_KEY = 'sql-to-json:plain-options';
+const SAMPLE = [
+  'CustomerID\tFirstName\tLastName\tEmail\tZipCode\tIsActive\tBalance\tCreatedAt\tManagerID',
+  '1\tJuan\tDela Cruz\tjuan@example.com\t01234\t1\t1500.75\t2024-01-15 10:30:00.000\tNULL',
+  '2\tMaria\tSantos\tmaria@example.com\t04100\t1\t0.00\t2024-02-03 08:05:12.123\t1',
+  '3\tJose\tRizal\tNULL\t03200\t0\t250.50\t2024-03-21 14:45:00.000\t1',
+].join('\r\n');
+
+function readOptions() {
+  const o = {};
+  for (const id of OPTION_IDS) {
+    const el = $(id);
+    o[id] = el.type === 'checkbox' ? el.checked : el.value;
+  }
+  return o;
+}
+
+function restoreOptions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    for (const id of OPTION_IDS) {
+      if (!(id in saved)) continue;
+      const el = $(id);
+      if (el.type === 'checkbox') el.checked = !!saved[id];
+      else if ([...el.options].some(opt => opt.value === saved[id])) el.value = saved[id];
+    }
+  } catch { /* storage unavailable — defaults are fine */ }
+}
+
+function saveOptions(o) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(o)); } catch { /* ignore */ }
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function plural(n, word) { return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`; }
+
+function showMessages(list, label) {
+  const box = $('msgs');
+  box.replaceChildren(...list.map(text => {
+    const li = document.createElement('li');
+    const strong = document.createElement('strong');
+    strong.textContent = `${label}:`;
+    li.append(strong, ' ', text);
+    return li;
+  }));
+  box.hidden = !list.length;
+}
+
+function showColumns(keys, types) {
+  const MAX_ROWS = 80;
+  const rows = keys.slice(0, MAX_ROWS).map((key, i) => {
+    const tr = document.createElement('tr');
+    for (const text of [key, types[i]]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.append(td);
+    }
+    return tr;
+  });
+  if (keys.length > MAX_ROWS) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 2;
+    td.textContent = `+${keys.length - MAX_ROWS} more`;
+    tr.append(td);
+    rows.push(tr);
+  }
+  $('columnRows').replaceChildren(...rows);
+  $('columns').hidden = !rows.length;
+}
+
+function render() {
+  const o = readOptions();
+  saveOptions(o);
+  const text = input.value;
+
+  if (!text.trim()) {
+    output.value = '';
+    $('inStatus').textContent = 'Waiting for input…';
+    $('outStatus').textContent = '';
+    showColumns([], []);
+    showMessages([], '');
+    $('copyBtn').disabled = $('downloadBtn').disabled = true;
+    return;
+  }
+
+  let res;
+  try {
+    res = convertText(text, o);
+  } catch (err) {
+    output.value = '';
+    $('outStatus').textContent = '';
+    showMessages([err.message], "Couldn't convert");
+    $('copyBtn').disabled = $('downloadBtn').disabled = true;
+    return;
+  }
+
+  output.value = res.json;
+  const source = `${FORMAT_NAMES[res.format]}${o.format === 'auto' ? ' · auto-detected' : ''}`;
+  $('inStatus').textContent = `${source} · ${plural(res.rowCount, 'row')} · ${plural(res.keys.length, 'column')}`;
+  showColumns(res.keys, res.columnTypes);
+  $('outStatus').textContent = formatBytes(new Blob([res.json]).size);
+  showMessages(res.warnings, 'Warning');
+  $('copyBtn').disabled = $('downloadBtn').disabled = !res.json;
+}
+
+let timer;
+const renderSoon = () => {
+  clearTimeout(timer);
+  timer = setTimeout(render, input.value.length > 200000 ? 300 : 80);
+};
+input.addEventListener('input', renderSoon);
+for (const id of OPTION_IDS) $(id).addEventListener('change', render);
+
+$('sampleBtn').addEventListener('click', () => { input.value = SAMPLE; render(); });
+$('clearBtn').addEventListener('click', () => { input.value = ''; render(); input.focus(); });
+
+$('copyBtn').addEventListener('click', async () => {
+  const btn = $('copyBtn');
+  try {
+    await navigator.clipboard.writeText(output.value);
+  } catch {
+    output.select();
+    document.execCommand('copy');
+  }
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+});
+
+$('downloadBtn').addEventListener('click', () => {
+  const ndjson = $('shape').value === 'ndjson';
+  const blob = new Blob([output.value], { type: ndjson ? 'application/x-ndjson' : 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ndjson ? 'sql-results.ndjson' : 'sql-results.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+async function loadFile(file) {
+  if (!file) return;
+  input.value = await file.text();
+  render();
+}
+$('file').addEventListener('change', e => {
+  loadFile(e.target.files[0]);
+  e.target.value = ''; // so picking the same file again still fires change
+});
+input.addEventListener('dragover', e => {
+  if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+});
+input.addEventListener('drop', e => {
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault();
+  loadFile(e.dataTransfer.files[0]);
+});
+
+restoreOptions();
+render();
+</script>
+</body>
+</html>
