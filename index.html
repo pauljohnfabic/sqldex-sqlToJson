@@ -198,6 +198,7 @@
   .dex[data-state="warn"] .led-yellow .shine,
   .dex[data-state="ok"] .led-green .shine { opacity: 0.9; }
 
+  #aboutBtn { font-size: 12px; padding: 7px 11px 9px; min-width: 0; }
   .logo { margin: 0; display: flex; align-items: center; gap: 14px; font-weight: normal; }
   .logo-main {
     font: 22px/1 var(--pixel-font);
@@ -338,6 +339,29 @@
   }
   .text-input::placeholder { color: var(--muted); opacity: 1; }
 
+  /* ---- table-name autocomplete ---- */
+  .autocomplete { position: relative; }
+  .ac-list {
+    position: absolute;
+    top: 100%;
+    left: 4px;
+    right: 4px;
+    z-index: 30;
+    margin-top: 2px;
+    max-height: 220px;
+    overflow: auto;
+    background: var(--panel);
+    box-shadow: var(--edge-sm), inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--dialog-ring);
+  }
+  .ac-group {
+    font: 8px/1 var(--pixel-font);
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 7px 10px 3px;
+  }
+  .ac-item { padding: 6px 10px; font-size: 18px; cursor: pointer; }
+  .ac-item:hover, .ac-item.active { background: var(--hover); }
+
   .checks { display: flex; flex-wrap: wrap; gap: 10px 22px; padding-bottom: 6px; }
   .checks label { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
   /* Checkboxes are pixel Poké Balls: grey when off, full colour when caught. */
@@ -388,6 +412,21 @@
   .modal-list label { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
   .modal-list .blank-tag { font-size: 14px; color: var(--muted); }
   .modal-empty { color: var(--muted); font-size: 18px; }
+
+  /* ---- about modal ---- */
+  .modal.about { max-width: 560px; }
+  .about-body { overflow: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 16px; }
+  .about-body h3 {
+    margin: 0 0 6px;
+    font: 9px/1.4 var(--pixel-font);
+    text-transform: uppercase;
+    color: var(--red);
+  }
+  .about-body p { margin: 0 0 4px; font-size: 18px; line-height: 1.3; }
+  .about-body ul { margin: 0; padding-left: 20px; font-size: 18px; line-height: 1.4; }
+  .about-body li { margin-bottom: 4px; }
+  .about-body li:last-child { margin-bottom: 0; }
+  .about-body b { color: var(--red); }
 
   /* ---- buttons ---- */
   button {
@@ -622,6 +661,7 @@
       <span class="led led-green"><svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path class="ink" d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v1h-1zM7 2h1v1h-1zM0 3h1v1h-1zM7 3h1v1h-1zM0 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM7 5h1v1h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z"/><path class="fill" d="M2 1h4v1h-4zM1 2h1v1h-1zM3 2h4v1h-4zM1 3h6v1h-6zM1 4h6v1h-6zM1 5h6v1h-6zM2 6h4v1h-4z"/><path class="shine" d="M2 2h1v1h-1z"/></svg></span>
     </div>
     <h1 class="logo"><span class="logo-main">SQLDEX</span><span class="logo-sub">sqlToJson</span></h1>
+    <button type="button" id="aboutBtn" aria-label="About / how to use" title="About / how to use">?</button>
     <div class="modes" role="group" aria-label="Conversion direction">
       <button type="button" class="mode" data-set-mode="toJson" aria-pressed="true">SQL<svg viewBox="0 0 7 5" shape-rendering="crispEdges" role="img" aria-label="to"><path d="M4 0h1v1h-1zM4 1h2v1h-2zM0 2h7v1h-7zM4 3h2v1h-2zM4 4h1v1h-1z"/></svg>JSON</button>
       <button type="button" class="mode" data-set-mode="toSql" aria-pressed="false">JSON<svg viewBox="0 0 7 5" shape-rendering="crispEdges" role="img" aria-label="to"><path d="M4 0h1v1h-1zM4 1h2v1h-2zM0 2h7v1h-7zM4 3h2v1h-2zM4 4h1v1h-1z"/></svg>SQL</button>
@@ -694,7 +734,10 @@
     <div class="opt-group" data-for="toSql" hidden>
     <div class="field">
       <label for="table">Table name</label>
-      <input type="text" id="table" class="text-input" value="dbo.MyTable" spellcheck="false" autocomplete="off">
+      <div class="autocomplete" id="tableAutocomplete">
+        <input type="text" id="table" class="text-input" value="dbo.MyTable" spellcheck="false" autocomplete="off">
+        <div class="ac-list" id="tableAcList" hidden role="listbox" aria-label="Recent table names"></div>
+      </div>
     </div>
     <div class="field">
       <label for="stmt">Statement</label>
@@ -781,6 +824,52 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="aboutModalOverlay" hidden>
+    <div class="modal about" role="dialog" aria-label="About / how to use" aria-modal="true">
+      <div class="modal-head">
+        <h2>How to use SQLDEX</h2>
+        <button type="button" id="aboutModalClose" aria-label="Close">×</button>
+      </div>
+      <div class="about-body">
+        <section>
+          <h3>Switch direction</h3>
+          <p>Top-right toggle: <b>SQL → JSON</b> or <b>JSON → SQL</b>. Each side remembers its own pasted text and its own options.</p>
+        </section>
+        <section>
+          <h3>SQL → JSON</h3>
+          <ul>
+            <li>Paste from SSMS (<b>Copy with Headers</b>), Excel, or a CSV/TSV/pipe file into the input screen, or drag a file onto it.</li>
+            <li><b>Input format</b> auto-detects tabs/commas/semicolons/pipes/"Results to Text".</li>
+            <li><b>Output shape</b>: array of objects, one object keyed by the 1st column, columns+rows, or JSON Lines.</li>
+            <li><b>Property names</b> / <b>Indent</b> control the JSON keys' casing and spacing.</li>
+            <li>Checkboxes: treat 1st row as headers, drop blank-header columns, convert NULL/empty cells, detect numbers &amp; booleans, convert dates to ISO 8601, trim spaces.</li>
+          </ul>
+        </section>
+        <section>
+          <h3>JSON → SQL</h3>
+          <ul>
+            <li>Paste a JSON array of objects or JSON Lines. Each key becomes a column.</li>
+            <li>Set the <b>table name</b>, <b>statement</b> type (batched INSERT, one-row-per-statement INSERT, or UPDATE by the 1st column), and column name casing. Table names you've used before show up as suggestions (grouped by schema) as you type.</li>
+            <li>Checkboxes: emit a CREATE TABLE, use N'…'/NVARCHAR for Unicode text, wrap with IDENTITY_INSERT ON.</li>
+            <li><b>Transaction wrapping</b>: none, a plain transaction, TRY/CATCH with rollback on error, or a test run (BEGIN TRAN…ROLLBACK TRAN, nothing is committed).</li>
+          </ul>
+        </section>
+        <section>
+          <h3>Columns… button</h3>
+          <p>Opens a checklist of every detected column so you can include/exclude columns without editing the source data — works in both directions, with Select all / Select none.</p>
+        </section>
+        <section>
+          <h3>Output panel</h3>
+          <p><b>Copy</b> or <b>Download</b> the converted result. <b>Sample</b> fills the input with example data; <b>Clear</b> empties it.</p>
+        </section>
+        <section>
+          <h3>Good to know</h3>
+          <p>Your option choices are saved in this browser (localStorage) and restored next time. Nothing you paste is ever uploaded — everything runs locally.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <footer class="dex-foot">
     <div class="dpad" aria-hidden="true">
       <svg viewBox="0 0 13 13" shape-rendering="crispEdges"><path class="ink" d="M4 0h5v1h-5zM4 1h1v1h-1zM8 1h1v1h-1zM4 2h1v1h-1zM8 2h1v1h-1zM4 3h1v1h-1zM8 3h1v1h-1zM0 4h5v1h-5zM8 4h5v1h-5zM0 5h1v1h-1zM12 5h1v1h-1zM0 6h1v1h-1zM12 6h1v1h-1zM0 7h1v1h-1zM12 7h1v1h-1zM0 8h5v1h-5zM8 8h5v1h-5zM4 9h1v1h-1zM8 9h1v1h-1zM4 10h1v1h-1zM8 10h1v1h-1zM4 11h1v1h-1zM8 11h1v1h-1zM4 12h5v1h-5z"/><path class="pad" d="M5 1h3v1h-3zM5 2h3v1h-3zM5 3h3v1h-3zM5 4h3v1h-3zM1 5h11v1h-11zM1 6h5v1h-5zM7 6h5v1h-5zM1 7h11v1h-11zM5 8h3v1h-3zM5 9h3v1h-3zM5 10h3v1h-3zM5 11h3v1h-3z"/><path class="pad-dot" d="M6 6h1v1h-1z"/></svg>
@@ -810,7 +899,19 @@ const INT_RE = /^-?\d+$/;
 const DEC_RE = /^-?\d+\.\d+$/;
 const EXP_RE = /^-?\d+(\.\d+)?[eE][+-]?\d+$/;
 const LEADING_ZERO_RE = /^-?0\d/;
+const COMMA_NUM_RE = /^-?\d{1,3}(,\d{3})+(\.\d+)?$/;
 const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(?: ?([+-]\d{2}:\d{2}|Z))?$/;
+
+// A quoted JSON string that's really a number — "6,000.00", "-1,234,567", or
+// plain "0.04" — with commas stripped. Null for anything else, including
+// leading-zero strings (zip codes, account numbers) which stay text.
+function numericStringText(v) {
+  if (typeof v !== 'string') return null;
+  const stripped = COMMA_NUM_RE.test(v) ? v.replace(/,/g, '') : v;
+  if (LEADING_ZERO_RE.test(stripped)) return null;
+  if (!INT_RE.test(stripped) && !DEC_RE.test(stripped) && !EXP_RE.test(stripped)) return null;
+  return stripped;
+}
 
 function detectFormat(text) {
   const head = text.slice(0, 20000).split(LINE_RE);
@@ -922,12 +1023,14 @@ function convertValue(raw, o, stats) {
   if (o.nulls && v === 'NULL') return null;
   if (v === '') return o.emptyNull ? null : '';
   if (o.types) {
-    const isInt = INT_RE.test(v);
-    if (isInt || DEC_RE.test(v) || EXP_RE.test(v)) {
+    // Thousands separators (1,234.56) are stripped before the usual number check.
+    const text = COMMA_NUM_RE.test(v) ? v.replace(/,/g, '') : v;
+    const isInt = INT_RE.test(text);
+    if (isInt || DEC_RE.test(text) || EXP_RE.test(text)) {
       // Leading zeros (zip codes, account numbers) stay strings.
-      if (LEADING_ZERO_RE.test(v)) return v;
-      const n = Number(v);
-      const digits = v.replace(/[eE].*$/, '').replace(/[-.]/g, '').replace(/^0+/, '').length;
+      if (LEADING_ZERO_RE.test(text)) return v;
+      const n = Number(text);
+      const digits = text.replace(/[eE].*$/, '').replace(/[-.]/g, '').replace(/^0+/, '').length;
       const exact = isInt ? Number.isSafeInteger(n) : digits <= 15 && Number.isFinite(n);
       if (exact) return n;
       stats.keptBig++;
@@ -1144,6 +1247,8 @@ function sqlLiteral(v, unicode) {
   if (v === null || v === undefined) return 'NULL';
   if (isRaw(v) || typeof v === 'number') return numText(v);
   if (typeof v === 'boolean') return v ? '1' : '0';
+  const numStr = numericStringText(v);
+  if (numStr !== null) return numStr;
   const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
   return (unicode ? "N'" : "'") + s.replace(/'/g, "''") + "'";
 }
@@ -1174,13 +1279,30 @@ function inferSqlType(values, unicode, stats) {
       s.bool++;
       text = v ? '1' : '0';
     } else if (typeof v === 'string') {
-      text = v;
-      const m = DATETIME_RE.exec(v);
-      if (DATE_RE.test(v)) s.date++;
-      else if (m) {
-        if (m[3]) s.dto++; else s.dt++;
-        const f = /\.(\d+)/.exec(m[2]);
-        s.frac = Math.max(s.frac, f ? Math.min(f[1].length, 7) : 0);
+      const numStr = numericStringText(v);
+      if (numStr !== null) {
+        text = numStr;
+        const m = PLAIN_NUM_RE.exec(numStr);
+        if (!m) s.exp++;
+        else {
+          s.intDigits = Math.max(s.intDigits, m[1].replace(/^0+/, '').length);
+          if (m[2]) { s.dec++; s.scale = Math.max(s.scale, m[2].length); }
+          else {
+            s.int++;
+            const b = BigInt(numStr);
+            if (b < -2147483648n || b > 2147483647n) s.fitsInt = false;
+            if (b < -9223372036854775808n || b > 9223372036854775807n) s.fitsBig = false;
+          }
+        }
+      } else {
+        text = v;
+        const m = DATETIME_RE.exec(v);
+        if (DATE_RE.test(v)) s.date++;
+        else if (m) {
+          if (m[3]) s.dto++; else s.dt++;
+          const f = /\.(\d+)/.exec(m[2]);
+          s.frac = Math.max(s.frac, f ? Math.min(f[1].length, 7) : 0);
+        }
       }
     } else {
       s.json++;
@@ -1351,6 +1473,70 @@ function loadExcludedColumns() {
 function saveExcludedColumns(m) {
   try { localStorage.setItem(EXCLUDED_KEYS[m], JSON.stringify([...excludedByMode[m]])); } catch { /* ignore */ }
 }
+
+// ---- table name history (JSON -> SQL) ----
+const TABLE_HISTORY_KEY = 'sql-to-json:tableHistory';
+const TABLE_HISTORY_MAX = 40;
+let tableHistory = []; // most-recently-used first
+
+function loadTableHistory() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TABLE_HISTORY_KEY) || '[]');
+    if (Array.isArray(saved)) tableHistory = saved.filter(s => typeof s === 'string' && s.trim());
+  } catch { tableHistory = []; }
+}
+
+function saveTableHistory() {
+  try { localStorage.setItem(TABLE_HISTORY_KEY, JSON.stringify(tableHistory)); } catch { /* ignore */ }
+}
+
+function rememberTable(name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return;
+  const i = tableHistory.findIndex(t => t.toLowerCase() === trimmed.toLowerCase());
+  if (i !== -1) tableHistory.splice(i, 1);
+  tableHistory.unshift(trimmed);
+  if (tableHistory.length > TABLE_HISTORY_MAX) tableHistory.length = TABLE_HISTORY_MAX;
+  saveTableHistory();
+}
+
+// "dbo.MyTable" -> schema "dbo", table "MyTable". No dot = no schema.
+function splitSchemaTable(name) {
+  const i = name.lastIndexOf('.');
+  return i === -1 ? { schema: '', table: name } : { schema: name.slice(0, i), table: name.slice(i + 1) };
+}
+
+// History entries that match what's typed so far, closest match first:
+// the table part starting with the query ranks above the full name just
+// containing it, and ties keep most-recently-used order.
+function matchingTables(query) {
+  const q = query.trim().toLowerCase();
+  return tableHistory
+    .map((name, i) => {
+      const lower = name.toLowerCase();
+      if (q && !lower.includes(q)) return null;
+      const { table } = splitSchemaTable(name);
+      let score = 2;
+      if (!q) score = 0;
+      else if (table.toLowerCase().startsWith(q)) score = 0;
+      else if (lower.startsWith(q)) score = 1;
+      return { name, score, i };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score || a.i - b.i)
+    .map(m => m.name);
+}
+
+// Groups matched names by schema while keeping matchingTables' relevance order.
+function groupBySchema(names) {
+  const order = [], groups = new Map();
+  for (const name of names) {
+    const key = splitSchemaTable(name).schema || '(no schema)';
+    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+    groups.get(key).push(name);
+  }
+  return order.map(schema => ({ schema, names: groups.get(schema) }));
+}
 const SAMPLE = [
   'CustomerID\tFirstName\tLastName\tEmail\tZipCode\tIsActive\tBalance\tCreatedAt\tManagerID',
   '1\tJuan\tDela Cruz\tjuan@example.com\t01234\t1\t1500.75\t2024-01-15 10:30:00.000\tNULL',
@@ -1456,6 +1642,8 @@ function setMode(next) {
   input.value = drafts[mode];
   applyMode();
   $('colModalOverlay').hidden = true;
+  $('aboutModalOverlay').hidden = true;
+  $('tableAcList').hidden = true;
   render();
 }
 
@@ -1550,6 +1738,81 @@ const renderSoon = () => {
 input.addEventListener('input', renderSoon);
 $('table').addEventListener('input', renderSoon);
 for (const id of OPTION_IDS) $(id).addEventListener('change', render);
+
+// ---- table name autocomplete dropdown ----
+let tableAcIndex = -1;
+
+function renderTableSuggestions() {
+  const list = $('tableAcList');
+  const names = matchingTables($('table').value).slice(0, 25);
+  tableAcIndex = -1;
+  if (!names.length) { list.hidden = true; list.replaceChildren(); return; }
+  const els = [];
+  for (const g of groupBySchema(names)) {
+    const header = document.createElement('div');
+    header.className = 'ac-group';
+    header.textContent = g.schema;
+    els.push(header);
+    for (const name of g.names) {
+      const item = document.createElement('div');
+      item.className = 'ac-item';
+      item.setAttribute('role', 'option');
+      item.textContent = name;
+      item.dataset.name = name;
+      item.addEventListener('mousedown', e => { e.preventDefault(); pickTable(name); });
+      els.push(item);
+    }
+  }
+  list.replaceChildren(...els);
+  list.hidden = false;
+}
+
+function pickTable(name) {
+  $('table').value = name;
+  hideTableSuggestions();
+  rememberTable(name);
+  render();
+}
+
+function hideTableSuggestions() {
+  $('tableAcList').hidden = true;
+  tableAcIndex = -1;
+}
+
+function updateActiveSuggestion(items) {
+  items.forEach((el, i) => el.classList.toggle('active', i === tableAcIndex));
+  if (tableAcIndex >= 0) items[tableAcIndex].scrollIntoView({ block: 'nearest' });
+}
+
+$('table').addEventListener('input', renderTableSuggestions);
+$('table').addEventListener('focus', renderTableSuggestions);
+$('table').addEventListener('blur', () => {
+  hideTableSuggestions();
+  rememberTable($('table').value);
+});
+$('table').addEventListener('keydown', e => {
+  const list = $('tableAcList');
+  if (list.hidden) return;
+  const items = [...list.querySelectorAll('.ac-item')];
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    tableAcIndex = Math.min(tableAcIndex + 1, items.length - 1);
+    updateActiveSuggestion(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    tableAcIndex = Math.max(tableAcIndex - 1, -1);
+    updateActiveSuggestion(items);
+  } else if (e.key === 'Enter') {
+    if (tableAcIndex >= 0 && items[tableAcIndex]) {
+      e.preventDefault();
+      pickTable(items[tableAcIndex].dataset.name);
+    } else {
+      hideTableSuggestions();
+    }
+  } else if (e.key === 'Escape') {
+    hideTableSuggestions();
+  }
+});
 for (const btn of document.querySelectorAll('[data-set-mode]')) {
   btn.addEventListener('click', () => setMode(btn.dataset.setMode));
 }
@@ -1644,7 +1907,18 @@ function closeColumnPicker() {
 $('columnsBtn').addEventListener('click', openColumnPicker);
 $('colModalClose').addEventListener('click', closeColumnPicker);
 $('colModalOverlay').addEventListener('click', e => { if (e.target === $('colModalOverlay')) closeColumnPicker(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('colModalOverlay').hidden) closeColumnPicker(); });
+
+function openAboutModal() { $('aboutModalOverlay').hidden = false; }
+function closeAboutModal() { $('aboutModalOverlay').hidden = true; }
+$('aboutBtn').addEventListener('click', openAboutModal);
+$('aboutModalClose').addEventListener('click', closeAboutModal);
+$('aboutModalOverlay').addEventListener('click', e => { if (e.target === $('aboutModalOverlay')) closeAboutModal(); });
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('colModalOverlay').hidden) closeColumnPicker();
+  if (!$('aboutModalOverlay').hidden) closeAboutModal();
+});
 
 $('colSelectAll').addEventListener('click', () => {
   excludedByMode[mode].clear();
@@ -1676,6 +1950,7 @@ inputPane.addEventListener('drop', async e => {
 
 restoreOptions();
 loadExcludedColumns();
+loadTableHistory();
 applyMode();
 render();
 </script>
