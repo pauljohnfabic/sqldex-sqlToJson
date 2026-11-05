@@ -1834,16 +1834,34 @@ $('copyBtn').addEventListener('click', async () => {
   setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
 });
 
+function randomTag(n) {
+  const hex = '0123456789abcdef';
+  const len = n || 7;
+  let s = '';
+  if (window.crypto && crypto.getRandomValues) {
+    const buf = new Uint8Array(len);
+    crypto.getRandomValues(buf);
+    for (const b of buf) s += hex[b & 15];
+  } else {
+    for (let i = 0; i < len; i++) s += hex[Math.floor(Math.random() * 16)];
+  }
+  return s;
+}
+
 $('downloadBtn').addEventListener('click', () => {
-  let name = 'sql-results.json', type = 'application/json';
-  if (mode === 'toSql') { name = 'sqldex.sql'; type = 'application/sql'; }
-  else if ($('shape').value === 'ndjson') { name = 'sql-results.ndjson'; type = 'application/x-ndjson'; }
+  const tag = randomTag(7);
+  let name = 'json_' + tag + '.json', type = 'application/json';
+  if (mode === 'toSql') { name = 'sql_' + tag + '.sql'; type = 'application/sql'; }
+  else if ($('shape').value === 'ndjson') { name = 'json_' + tag + '.ndjson'; type = 'application/x-ndjson'; }
   const blob = new Blob([output.value], { type });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 });
 
 function currentColumns() {

@@ -493,14 +493,31 @@ $('copyBtn').addEventListener('click', async () => {
   setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
 });
 
+function randomTag(n) {
+  const hex = '0123456789abcdef';
+  const len = n || 7;
+  let s = '';
+  if (window.crypto && crypto.getRandomValues) {
+    const buf = new Uint8Array(len);
+    crypto.getRandomValues(buf);
+    for (const b of buf) s += hex[b & 15];
+  } else {
+    for (let i = 0; i < len; i++) s += hex[Math.floor(Math.random() * 16)];
+  }
+  return s;
+}
+
 $('downloadBtn').addEventListener('click', () => {
   const ndjson = $('shape').value === 'ndjson';
   const blob = new Blob([output.value], { type: ndjson ? 'application/x-ndjson' : 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = ndjson ? 'sql-results.ndjson' : 'sql-results.json';
+  a.download = 'json_' + randomTag(7) + (ndjson ? '.ndjson' : '.json');
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 });
 
 async function loadFile(file) {
